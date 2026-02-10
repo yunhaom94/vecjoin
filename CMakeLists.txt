@@ -5,8 +5,8 @@ project ( vecjoin-cpu )
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Enable AVX2 + FMA intrinsics
-add_compile_options(-mavx2 -mfma)
+# Enable AVX2 + FMA intrinsics (Zen3)
+add_compile_options(-mavx2 -mfma -O3)
 
 
 FIND_PACKAGE( OpenMP REQUIRED)

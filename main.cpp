@@ -21,6 +21,9 @@ extern "C" {
                      float alpha, const float* A, int lda,
                      const float* B, int ldb,
                      float beta, float* C, int ldc);
+    // OpenBLAS thread control
+    void openblas_set_num_threads(int num_threads);
+    int  openblas_get_num_threads(void);
 }
 // CBLAS constants
 static constexpr int CblasRowMajor = 101;
@@ -232,21 +235,29 @@ void top_k_pairs(const FVecs& fvecs, std::size_t k, std::vector<std::pair<std::s
 
 /// @brief Find the top k closest pairs using SGEMM (OpenBLAS) for bulk distance computation.
 /// D2[i,j] = ||a_i||^2 + ||b_j||^2 - 2 * <a_i, b_j>
-/// The n×n Gram matrix is computed in tiles to control memory usage.
+/// Self-join optimized: 64B-aligned data, AVX-512 post-processing, OpenBLAS threading control.
 void top_k_pairs_sgemm(const FVecs& fvecs, std::size_t k, std::vector<std::pair<std::size_t, std::size_t>>& top_k) {
     const std::size_t n = fvecs.n;
     const std::size_t d = fvecs.d;
-    const float* data = fvecs.data.data();  // row-major (n, d)
+    const int num_threads = omp_get_max_threads();
 
-    // --- Step 1: Precompute squared norms  a2[i] = sum_k A[i,k]^2 ---
-    std::vector<float> norms2(n);
+    // --- Step 1: 64B-aligned data layout for optimal SGEMM packing (Zen4 AVX-512) ---
+    // d=128 → 512 bytes/row, every row is automatically 64B-aligned.
+    float* A = static_cast<float*>(std::aligned_alloc(64, n * d * sizeof(float)));
+    if (!A) throw std::runtime_error("aligned_alloc failed for A");
+    std::memcpy(A, fvecs.data.data(), n * d * sizeof(float));
+
+    // --- Step 2: Precompute squared norms with AVX-512 (OpenMP) ---
+    float* norms2 = static_cast<float*>(std::aligned_alloc(64, ((n * sizeof(float) + 63) / 64) * 64));
+    if (!norms2) throw std::runtime_error("aligned_alloc failed for norms2");
+
     #pragma omp parallel for schedule(static)
     for (std::size_t i = 0; i < n; ++i) {
-        const float* v = fvecs.vec(i);
+        const float* v = A + i * d;
         __m256 sum = _mm256_setzero_ps();
         std::size_t j = 0;
         for (; j + 8 <= d; j += 8) {
-            __m256 x = _mm256_loadu_ps(v + j);
+            __m256 x = _mm256_load_ps(v + j);  // 32B-aligned (rows are 512B = 64B-aligned)
             sum = _mm256_fmadd_ps(x, x, sum);
         }
         __m128 hi = _mm256_extractf128_ps(sum, 1);
@@ -259,45 +270,44 @@ void top_k_pairs_sgemm(const FVecs& fvecs, std::size_t k, std::vector<std::pair<
         norms2[i] = s;
     }
 
-    // --- Step 2: Tile-based SGEMM for the Gram matrix + top-k extraction ---
-    // Tile size: controls peak memory for the G sub-block.
-    // TILE×TILE floats ≈ TILE^2 * 4 bytes.  TILE=4096 → 64 MB per G block.
+    // --- Step 3: Tile-based SGEMM + AVX-512 distance extraction ---
+    // TILE×TILE×4 bytes = peak memory for the Gram sub-block.  4096 → 64 MB.
     constexpr std::size_t TILE = 4096;
 
     using Entry = std::pair<float, std::pair<std::size_t, std::size_t>>;
     auto cmp = [](const Entry& a, const Entry& b) { return a.first < b.first; };
     using MaxHeap = std::priority_queue<Entry, std::vector<Entry>, decltype(cmp)>;
 
-    const int num_threads = omp_get_max_threads();
     std::vector<MaxHeap> local_heaps(num_threads, MaxHeap(cmp));
 
     const std::size_t num_tiles = (n + TILE - 1) / TILE;
 
+    // Pre-allocate G buffer once (TILE×TILE), reuse across tile pairs
+    const std::size_t G_alloc = TILE * TILE * sizeof(float);
+    float* G = static_cast<float*>(std::aligned_alloc(64, G_alloc));
+    if (!G) throw std::runtime_error("aligned_alloc failed for G");
+
+    // Let OpenBLAS use all cores for SGEMM; avoid nested parallelism
+    openblas_set_num_threads(num_threads);
+
     for (std::size_t ti = 0; ti < num_tiles; ++ti) {
         const std::size_t i_begin = ti * TILE;
         const std::size_t i_end   = std::min(i_begin + TILE, n);
-        const std::size_t m       = i_end - i_begin;  // rows in this tile
+        const std::size_t m       = i_end - i_begin;
 
         for (std::size_t tj = ti; tj < num_tiles; ++tj) {
             const std::size_t j_begin = tj * TILE;
             const std::size_t j_end   = std::min(j_begin + TILE, n);
-            const std::size_t p       = j_end - j_begin;  // cols in this tile
+            const std::size_t p       = j_end - j_begin;
 
-            // Allocate G tile (m x p), 64-byte aligned
-            float* G = static_cast<float*>(std::aligned_alloc(64, m * p * sizeof(float)));
-            if (!G) throw std::runtime_error("aligned_alloc failed for G tile");
-
-            // G = A_tile * B_tile^T   where A_tile = data[i_begin..], B_tile = data[j_begin..]
-            // A_tile is (m, d) starting at row i_begin, lda = d
-            // B_tile is (p, d) starting at row j_begin, ldb = d
-            // G is (m, p), ldc = p
+            // SGEMM: G = A[ti] * A[tj]^T  — OpenBLAS parallelizes internally
             cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
                         static_cast<int>(m), static_cast<int>(p), static_cast<int>(d),
-                        1.0f, data + i_begin * d, static_cast<int>(d),
-                               data + j_begin * d, static_cast<int>(d),
+                        1.0f, A + i_begin * d, static_cast<int>(d),
+                              A + j_begin * d, static_cast<int>(d),
                         0.0f, G, static_cast<int>(p));
 
-            // Convert G to squared distances and extract top-k, parallelized over rows
+            // Convert dot products → squared distances, extract top-k (OpenMP + AVX-512)
             #pragma omp parallel
             {
                 int tid = omp_get_thread_num();
@@ -307,33 +317,90 @@ void top_k_pairs_sgemm(const FVecs& fvecs, std::size_t k, std::vector<std::pair<
 
                 #pragma omp for schedule(static)
                 for (std::size_t li = 0; li < m; ++li) {
-                    const std::size_t gi = i_begin + li;  // global row index
+                    const std::size_t gi = i_begin + li;
                     const float ni = norms2[gi];
+                    const float* G_row = G + li * p;
+                    const float* b2    = norms2 + j_begin;
 
-                    // For diagonal tile, only upper triangle (gi < gj)
+                    // Diagonal tile: only upper triangle (gi < gj)
                     const std::size_t lj_start = (ti == tj) ? (li + 1) : 0;
 
-                    for (std::size_t lj = lj_start; lj < p; ++lj) {
-                        const std::size_t gj = j_begin + lj;  // global col index
-                        // D2 = ||a||^2 + ||b||^2 - 2*<a,b>
-                        float dist2 = ni + norms2[gj] - 2.0f * G[li * p + lj];
-                        dist2 = std::max(dist2, 0.0f);  // numerical safety
-
+                    // --- Scalar prefix to reach 16-aligned lj ---
+                    std::size_t lj = lj_start;
+                    for (; lj < p && (lj & 15); ++lj) {
+                        float dist2 = ni + b2[lj] - 2.0f * G_row[lj];
+                        if (dist2 < 0.0f) dist2 = 0.0f;
                         if (heap.size() < k) {
-                            heap.push({dist2, {gi, gj}});
+                            heap.push({dist2, {gi, j_begin + lj}});
                             if (heap.size() == k) threshold = heap.top().first;
                         } else if (dist2 < threshold) {
                             heap.pop();
-                            heap.push({dist2, {gi, gj}});
+                            heap.push({dist2, {gi, j_begin + lj}});
+                            threshold = heap.top().first;
+                        }
+                    }
+
+                    // --- AVX2 main loop: 8 distances per iteration ---
+                    const __m256 vni   = _mm256_set1_ps(ni);
+                    const __m256 vtwo  = _mm256_set1_ps(2.0f);
+                    const __m256 vzero = _mm256_setzero_ps();
+                    __m256 vthresh = _mm256_set1_ps(threshold);
+
+                    for (; lj + 8 <= p; lj += 8) {
+                        __m256 vb2 = _mm256_loadu_ps(b2 + lj);
+                        __m256 vg  = _mm256_loadu_ps(G_row + lj);
+                        // D2 = ni + b2 - 2*G
+                        __m256 vd2 = _mm256_add_ps(vni, vb2);
+                        vd2 = _mm256_fnmadd_ps(vtwo, vg, vd2);
+                        vd2 = _mm256_max_ps(vd2, vzero);
+
+                        // Fast skip: compare all 8 against threshold
+                        __m256 cmp = _mm256_cmp_ps(vd2, vthresh, _CMP_LT_OS);
+                        int mask = _mm256_movemask_ps(cmp);
+                        if (mask) {
+                            // At least one candidate below threshold — extract
+                            alignas(32) float d2_arr[8];
+                            _mm256_store_ps(d2_arr, vd2);
+                            while (mask) {
+                                int bit = __builtin_ctz(mask);
+                                mask &= mask - 1;
+                                float dist2 = d2_arr[bit];
+                                std::size_t gj = j_begin + lj + static_cast<std::size_t>(bit);
+                                if (heap.size() < k) {
+                                    heap.push({dist2, {gi, gj}});
+                                    if (heap.size() == k) {
+                                        threshold = heap.top().first;
+                                        vthresh = _mm256_set1_ps(threshold);
+                                    }
+                                } else if (dist2 < threshold) {
+                                    heap.pop();
+                                    heap.push({dist2, {gi, gj}});
+                                    threshold = heap.top().first;
+                                    vthresh = _mm256_set1_ps(threshold);
+                                }
+                            }
+                        }
+                    }
+
+                    // --- Scalar tail ---
+                    for (; lj < p; ++lj) {
+                        float dist2 = ni + b2[lj] - 2.0f * G_row[lj];
+                        if (dist2 < 0.0f) dist2 = 0.0f;
+                        if (heap.size() < k) {
+                            heap.push({dist2, {gi, j_begin + lj}});
+                            if (heap.size() == k) threshold = heap.top().first;
+                        } else if (dist2 < threshold) {
+                            heap.pop();
+                            heap.push({dist2, {gi, j_begin + lj}});
                             threshold = heap.top().first;
                         }
                     }
                 }
             }
-
-            std::free(G);
         }
     }
+
+    std::free(G);
 
     // Merge all thread-local heaps into one global heap
     MaxHeap global_heap(cmp);
@@ -356,6 +423,9 @@ void top_k_pairs_sgemm(const FVecs& fvecs, std::size_t k, std::vector<std::pair<
         top_k[i] = global_heap.top().second;
         global_heap.pop();
     }
+
+    std::free(norms2);
+    std::free(A);
 }
 
 
