@@ -5,6 +5,9 @@ project ( vecjoin-cpu )
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable AVX2 + FMA intrinsics
+add_compile_options(-mavx2 -mfma)
+
 
 FIND_PACKAGE( OpenMP REQUIRED)
 if(OPENMP_FOUND)
@@ -14,6 +17,9 @@ message("OPENMP FOUND")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 
+# OpenBLAS for SGEMM
+find_package(BLAS REQUIRED)
+message(STATUS "BLAS libraries: ${BLAS_LIBRARIES}")
 
 file(GLOB SRC
 "*.cpp"
@@ -22,3 +28,4 @@ file(GLOB SRC
 
 
 add_executable(vecjoin-cpu main.cpp ${SRC})
+target_link_libraries(vecjoin-cpu ${BLAS_LIBRARIES})
