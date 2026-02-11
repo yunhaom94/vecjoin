@@ -429,6 +429,127 @@ void top_k_pairs_sgemm(const FVecs& fvecs, std::size_t k, std::vector<std::pair<
 }
 
 
+
+/// @brief Compute all pairwise squared distances using tiled SGEMM, no top-k heap.
+/// Writes upper-triangular D2 tile blocks to a binary file ("D2_block") as they are computed.
+/// Each written record: { uint64 i_begin, uint64 j_begin, uint64 m, uint64 p, float[m*p] }
+/// For diagonal tiles only the upper triangle is meaningful (entries with gi < gj).
+/// This function benchmarks raw SGEMM + D2 throughput without heap overhead.
+void pairs_without_topk(const FVecs& fvecs, const std::string& out_path) {
+    const std::size_t n = fvecs.n;
+    const std::size_t d = fvecs.d;
+    const int num_threads = omp_get_max_threads();
+
+    // --- 64B-aligned data copy ---
+    float* A = static_cast<float*>(std::aligned_alloc(64, n * d * sizeof(float)));
+    if (!A) throw std::runtime_error("aligned_alloc failed for A");
+    std::memcpy(A, fvecs.data.data(), n * d * sizeof(float));
+
+    // --- Precompute squared norms (OpenMP, AVX2) ---
+    float* norms2 = static_cast<float*>(std::aligned_alloc(64, ((n * sizeof(float) + 63) / 64) * 64));
+    if (!norms2) throw std::runtime_error("aligned_alloc failed for norms2");
+
+    #pragma omp parallel for schedule(static)
+    for (std::size_t i = 0; i < n; ++i) {
+        const float* v = A + i * d;
+        __m256 sum = _mm256_setzero_ps();
+        std::size_t j = 0;
+        for (; j + 8 <= d; j += 8) {
+            __m256 x = _mm256_load_ps(v + j);
+            sum = _mm256_fmadd_ps(x, x, sum);
+        }
+        __m128 hi = _mm256_extractf128_ps(sum, 1);
+        __m128 lo = _mm256_castps256_ps128(sum);
+        __m128 r  = _mm_add_ps(lo, hi);
+        r = _mm_hadd_ps(r, r);
+        r = _mm_hadd_ps(r, r);
+        float s = _mm_cvtss_f32(r);
+        for (; j < d; ++j) s += v[j] * v[j];
+        norms2[i] = s;
+    }
+
+    // --- Tile-based SGEMM → D2 conversion, written to file ---
+    constexpr std::size_t TILE = 4096;
+    const std::size_t num_tiles = (n + TILE - 1) / TILE;
+
+    // Pre-allocate G and D2 buffers (reused across tiles)
+    float* G  = static_cast<float*>(std::aligned_alloc(64, TILE * TILE * sizeof(float)));
+    float* D2 = static_cast<float*>(std::aligned_alloc(64, TILE * TILE * sizeof(float)));
+    if (!G || !D2) throw std::runtime_error("aligned_alloc failed for G/D2 buffers");
+
+    openblas_set_num_threads(num_threads);
+
+    std::ofstream out(out_path, std::ios::binary | std::ios::trunc);
+    if (!out) throw std::runtime_error("Failed to open output: " + out_path);
+
+    std::size_t tiles_done = 0;
+    const std::size_t total_tile_pairs = num_tiles * (num_tiles + 1) / 2;
+
+    for (std::size_t ti = 0; ti < num_tiles; ++ti) {
+        const std::size_t i_begin = ti * TILE;
+        const std::size_t i_end   = std::min(i_begin + TILE, n);
+        const std::size_t m       = i_end - i_begin;
+
+        for (std::size_t tj = ti; tj < num_tiles; ++tj) {
+            const std::size_t j_begin = tj * TILE;
+            const std::size_t j_end   = std::min(j_begin + TILE, n);
+            const std::size_t p       = j_end - j_begin;
+
+            // SGEMM: G = A[ti] * A[tj]^T — OpenBLAS parallelizes internally
+            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                        static_cast<int>(m), static_cast<int>(p), static_cast<int>(d),
+                        1.0f, A + i_begin * d, static_cast<int>(d),
+                              A + j_begin * d, static_cast<int>(d),
+                        0.0f, G, static_cast<int>(p));
+
+            // Convert G → D2 in parallel (OpenMP + AVX2)
+            #pragma omp parallel for schedule(static)
+            for (std::size_t li = 0; li < m; ++li) {
+                const float ni = norms2[i_begin + li];
+                const float* G_row  = G  + li * p;
+                float*       D2_row = D2 + li * p;
+                const float* b2     = norms2 + j_begin;
+
+                const __m256 vni   = _mm256_set1_ps(ni);
+                const __m256 vtwo  = _mm256_set1_ps(2.0f);
+                const __m256 vzero = _mm256_setzero_ps();
+
+                std::size_t lj = 0;
+                for (; lj + 8 <= p; lj += 8) {
+                    __m256 vb2 = _mm256_loadu_ps(b2 + lj);
+                    __m256 vg  = _mm256_loadu_ps(G_row + lj);
+                    __m256 vd2 = _mm256_add_ps(vni, vb2);
+                    vd2 = _mm256_fnmadd_ps(vtwo, vg, vd2);  // ni + b2 - 2*G
+                    vd2 = _mm256_max_ps(vd2, vzero);
+                    _mm256_storeu_ps(D2_row + lj, vd2);
+                }
+                for (; lj < p; ++lj) {
+                    float dist2 = ni + b2[lj] - 2.0f * G_row[lj];
+                    D2_row[lj] = std::max(dist2, 0.0f);
+                }
+            }
+
+            // Write tile header + D2 block
+            std::uint64_t hdr[4] = { i_begin, j_begin, m, p };
+            out.write(reinterpret_cast<const char*>(hdr), sizeof(hdr));
+            out.write(reinterpret_cast<const char*>(D2), m * p * sizeof(float));
+
+            ++tiles_done;
+            if (tiles_done % 50 == 0 || tiles_done == total_tile_pairs) {
+                std::cout << "\r  Tiles: " << tiles_done << "/" << total_tile_pairs << std::flush;
+            }
+        }
+    }
+
+    out.close();
+    std::cout << "\nWrote D2 blocks to: " << out_path << "\n";
+
+    std::free(D2);
+    std::free(G);
+    std::free(norms2);
+    std::free(A);
+}
+
 int main(int argc, char *argv[]) {
     auto fvecs = read_fvecs(DATASET);
 
@@ -452,19 +573,29 @@ int main(int argc, char *argv[]) {
     // }
 
     // --- SGEMM (OpenBLAS) implementation ---
+    // {
+    //     std::vector<std::pair<std::size_t, std::size_t>> results;
+    //     auto t0 = omp_get_wtime();
+    //     top_k_pairs_sgemm(fvecs, k, results);
+    //     auto t1 = omp_get_wtime();
+
+    //     std::cout << "\n=== SGEMM (OpenBLAS) top-k ===\n";
+    //     std::cout << "Top " << k << " closest pairs (squared L2 distance):\n";
+    //     for (std::size_t i = 0; i < results.size(); ++i) {
+    //         auto [a, b] = results[i];
+    //         float dist = squared_distance_avx(fvecs.vec(a), fvecs.vec(b), fvecs.d);
+    //         std::cout << i + 1 << ": (" << a << ", " << b << ") dist=" << dist << "\n";
+    //     }
+    //     std::cout << "Time: " << (t1 - t0) << " seconds\n";
+    // }
+
+    // --- SGEMM full pairwise (no heap) ---
     {
-        std::vector<std::pair<std::size_t, std::size_t>> results;
         auto t0 = omp_get_wtime();
-        top_k_pairs_sgemm(fvecs, k, results);
+        pairs_without_topk(fvecs, "D2_block");
         auto t1 = omp_get_wtime();
 
-        std::cout << "\n=== SGEMM (OpenBLAS) ===\n";
-        std::cout << "Top " << k << " closest pairs (squared L2 distance):\n";
-        for (std::size_t i = 0; i < results.size(); ++i) {
-            auto [a, b] = results[i];
-            float dist = squared_distance_avx(fvecs.vec(a), fvecs.vec(b), fvecs.d);
-            std::cout << i + 1 << ": (" << a << ", " << b << ") dist=" << dist << "\n";
-        }
+        std::cout << "\n=== SGEMM full pairwise (no heap) ===\n";
         std::cout << "Time: " << (t1 - t0) << " seconds\n";
     }
 
