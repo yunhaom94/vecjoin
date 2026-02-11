@@ -4,3 +4,4 @@ CPU Baseline Results: AMD 5900x 24-thread CPU
 Embarrassingly parallel loops: 4400s
 Tile based scheduling: 3798s
 GEMM: 2297s - optimized 1102.48s
+No Heap: 941s
