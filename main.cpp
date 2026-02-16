@@ -435,7 +435,7 @@ void top_k_pairs_sgemm(const FVecs& fvecs, std::size_t k, std::vector<std::pair<
 /// Each written record: { uint64 i_begin, uint64 j_begin, uint64 m, uint64 p, float[m*p] }
 /// For diagonal tiles only the upper triangle is meaningful (entries with gi < gj).
 /// This function benchmarks raw SGEMM + D2 throughput without heap overhead.
-void pairs_without_topk(const FVecs& fvecs, const std::string& out_path) {
+void pairs_without_topk(const FVecs& fvecs) {
     const std::size_t n = fvecs.n;
     const std::size_t d = fvecs.d;
     const int num_threads = omp_get_max_threads();
@@ -478,9 +478,6 @@ void pairs_without_topk(const FVecs& fvecs, const std::string& out_path) {
     if (!G || !D2) throw std::runtime_error("aligned_alloc failed for G/D2 buffers");
 
     openblas_set_num_threads(num_threads);
-
-    std::ofstream out(out_path, std::ios::binary | std::ios::trunc);
-    if (!out) throw std::runtime_error("Failed to open output: " + out_path);
 
     std::size_t tiles_done = 0;
     const std::size_t total_tile_pairs = num_tiles * (num_tiles + 1) / 2;
@@ -531,8 +528,6 @@ void pairs_without_topk(const FVecs& fvecs, const std::string& out_path) {
 
             // Write tile header + D2 block
             std::uint64_t hdr[4] = { i_begin, j_begin, m, p };
-            out.write(reinterpret_cast<const char*>(hdr), sizeof(hdr));
-            out.write(reinterpret_cast<const char*>(D2), m * p * sizeof(float));
 
             ++tiles_done;
             if (tiles_done % 50 == 0 || tiles_done == total_tile_pairs) {
@@ -540,9 +535,6 @@ void pairs_without_topk(const FVecs& fvecs, const std::string& out_path) {
             }
         }
     }
-
-    out.close();
-    std::cout << "\nWrote D2 blocks to: " << out_path << "\n";
 
     std::free(D2);
     std::free(G);
@@ -592,7 +584,7 @@ int main(int argc, char *argv[]) {
     // --- SGEMM full pairwise (no heap) ---
     {
         auto t0 = omp_get_wtime();
-        pairs_without_topk(fvecs, "D2_block");
+        pairs_without_topk(fvecs);
         auto t1 = omp_get_wtime();
 
         std::cout << "\n=== SGEMM full pairwise (no heap) ===\n";
