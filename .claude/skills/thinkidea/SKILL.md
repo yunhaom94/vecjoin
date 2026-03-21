@@ -12,7 +12,7 @@ ThinkIdea is a human-in-the-loop orchestration agent assisted scientific researc
 
 Loop
 3. Expand the idea into detailed concepts, todos, and new ideas. Use ``brainstorming-research-ideas`` and ``creative-thinking-for-research`` skills to help you with this step.
-4. Conduct related work search to find relevant papers, summarize them and store them into ``Literature`` folder, see Section `Literature Management` for more details.
+4. Conduct related work search to find relevant papers if needed. Use ``literature-search`` skill to help you with this step.
 5. Whenever you think you have enough insights, ideas, or progress, communicate with the users to for discussion and feedback. Refine the ideas based on the discussion.
 6. Repeat the above steps until the user is satisfied for the current round of research.
 
