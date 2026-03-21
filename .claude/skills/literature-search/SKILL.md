@@ -3,8 +3,8 @@ name: literature-search
 description: >
   Conducts comprehensive related work search across Semantic Scholar, arXiv, and Google Scholar
   for a given research topic. Searches academic databases via APIs, filters candidates by
-  title/abstract relevance, obtains full texts for deeper checks, downloads PDFs, and stores
-  structured summaries. This skill is invoked as a sub-agent by the thinkidea skill during
+  title/abstract relevance, obtains full texts for deeper checks, converts papers to Markdown
+  via markitdown for analysis and storage, and writes structured summaries. This skill is invoked as a sub-agent by the thinkidea skill during
   the literature management phase — it is not user-invocable.
 ---
 
@@ -29,7 +29,7 @@ Phase 1: Filter by title + abstract relevance (~50-100 → ~10-20)
 Phase 2: Obtain full texts, check deeper relevance (~10-20 → ~5-15)
         │
         ▼
-Phase 3: Download PDFs + write summaries to Literatures.md
+Phase 3: Download PDFs → convert to Markdown via markitdown → delete PDFs → write summaries
         │
         ▼
 Return summary report to calling agent
@@ -95,14 +95,17 @@ For each paper that passed Phase 1, attempt to obtain the full text:
 3. **Try arXiv** if the paper has an arXiv ID but wasn't found via arXiv search
 
 For papers where you can obtain the PDF:
-- Download it temporarily
-- Use the `markitdown` skill or `Read` tool to extract text from the PDF
-- Skim the introduction, methodology, and conclusion sections
+- Download it to a temporary location using the download script
+- Convert it to Markdown using `markitdown` for analysis:
+  ```bash
+  markitdown "/tmp/<sanitized_title>.pdf" -o "/tmp/<sanitized_title>.md"
+  ```
+- Read the converted Markdown to skim introduction, methodology, and conclusion sections
 - Determine if the paper is truly relevant to the specific problem
 
 For papers where the PDF is unavailable:
 - Make a relevance judgment based on the abstract alone
-- If the abstract is strong enough, keep the paper but mark it as "PDF unavailable"
+- If the abstract is strong enough, keep the paper but mark it as "full text unavailable"
 
 Target ~5-15 papers after this phase.
 
@@ -116,7 +119,7 @@ this header:
 
 ```markdown
 # Literatures
-This document contains a list of literatures that is relevant to this project. Each literature is formatted in the following way, and each literature is separated by a horizontal line (---). The ./Notes/Literatures/ folder contains the full papers of the literatures listed in this file, with name format "{title}.pdf".
+This document contains a list of literatures that is relevant to this project. Each literature is formatted in the following way, and each literature is separated by a horizontal line (---). The ./Notes/Literatures/ folder contains the full text of the literatures listed in this file in Markdown format, with name format "{title}.md".
 ```
 
 ### 3b. Check for duplicates
@@ -124,17 +127,31 @@ This document contains a list of literatures that is relevant to this project. E
 Before adding a paper, read the existing Literatures.md to check if the paper is already
 listed (match by title). Skip any paper that's already there.
 
-### 3c. Download PDFs
+### 3c. Download, convert to Markdown, and clean up
 
 For each relevant paper with an available PDF URL:
-```bash
-python "<skill-dir>/scripts/download_pdf.py" \
-  --url "<pdf_url>" \
-  --output "{project_root}/Notes/Literatures/<sanitized_title>.pdf"
-```
+
+1. Download the PDF to a temporary location:
+   ```bash
+   python "<skill-dir>/scripts/download_pdf.py" \
+     --url "<pdf_url>" \
+     --output "/tmp/<sanitized_title>.pdf"
+   ```
+
+2. Convert the PDF to Markdown using `markitdown`:
+   ```bash
+   markitdown "/tmp/<sanitized_title>.pdf" -o "{project_root}/Notes/Literatures/<sanitized_title>.md"
+   ```
+   If `markitdown` is not installed, install it first: `pip install 'markitdown[pdf]'`.
+
+3. Delete the temporary PDF:
+   ```bash
+   rm "/tmp/<sanitized_title>.pdf"
+   ```
 
 The title should be sanitized for use as a filename (remove special characters, truncate
-if very long). The download script handles retries and validates the file is actually a PDF.
+if very long). The download script handles retries and validates the file is actually a PDF
+before conversion.
 
 ### 3d. Append summaries to Literatures.md
 
@@ -151,8 +168,8 @@ For each relevant paper, append an entry to the end of Literatures.md in this ex
 ---
 ```
 
-If the PDF was unavailable, add a note at the end of the Summary:
-`(Note: Full text PDF was not available for download.)`
+If the full text was unavailable, add a note at the end of the Summary:
+`(Note: Full text was not available for download and conversion.)`
 
 ## Output
 
@@ -168,14 +185,14 @@ When finished, return a structured summary to the calling agent:
 - Papers found across all sources: {N}
 - Papers after title/abstract filtering: {M}
 - Papers after full-text check: {K}
-- PDFs successfully downloaded: {P}
+- Papers successfully converted to Markdown: {P}
 
 ### Papers Added
 1. {Title} ({Year}) - {Venue}
 2. {Title} ({Year}) - {Venue}
 ...
 
-### Papers Without PDF
+### Papers Without Full Text
 1. {Title} ({Year}) - {reason}
 ...
 ```

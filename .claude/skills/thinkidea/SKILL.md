@@ -51,7 +51,7 @@ If the knowledge gap is related to understanding the current state of the art, a
 - The **topic summary** (from Ideas.md or the current discussion)
 - The **problem statement** (the specific research question being explored)
 
-The literature-search skill will autonomously search Semantic Scholar, arXiv, and Google Scholar, filter candidates by relevance, download PDFs to `{project}/Notes/Literatures/`, and append structured summaries to `{project}/Notes/Literatures/Literatures.md`.
+The literature-search skill will autonomously search Semantic Scholar, arXiv, and Google Scholar, filter candidates by relevance, download papers and convert them to Markdown (via markitdown) under `{project}/Notes/Literatures/`, and append structured summaries to `{project}/Notes/Literatures/Literatures.md`.
 
 Example invocation:
 ```

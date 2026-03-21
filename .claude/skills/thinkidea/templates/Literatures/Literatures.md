@@ -1,5 +1,5 @@
 # Literatures
-This document contains a list of literatures that is relevant to this project. Each literature is formatted in the following way, and each literature is separated by a horizontal line (---). The ./Notes/Literatures/ folder contains the full papers of the literatures listed in this file, with name format "{title}.pdf".
+This document contains a list of literatures that is relevant to this project. Each literature is formatted in the following way, and each literature is separated by a horizontal line (---). The ./Notes/Literatures/ folder contains the full text of the literatures listed in this file in Markdown format, with name format "{title}.md".
 
 ---
 - **Title**: The title of the literature.
