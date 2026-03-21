@@ -1,11 +1,11 @@
 ---
 name: thinkidea
-description: The main driving skill for human-in-the-loop agent assisted research. Given an target idea or intuition, the agent will expand the idea into detailed concepts, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. After the ideas have been thoroughly explored, the agent will summarize the key insights and store them into the project file. This skill is invoked when the user specifies an topic, idea or intuition that they want to expand.
+description: The main driving skill for human-in-the-loop agent assisted research. Given an target idea or intuition, the agent will expand the idea into detailed concepts, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. After the ideas have been thoroughly explored, the agent will summarize the key insights and store them into the project file. This skill is invoked when the user specifies an topic, idea or intuition and ask for help to explore, brainstorm, or work on the idea.
 ---
 
 
 # ThinkIdea
-ThinkIdea is a human-in-the-loop orchestration agent assisted scientific research skill. From a high level, given an target idea or intuition, you will use the given background under `{project}/Notes/` and expand the idea into detailed concepts, implementation details, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. The users will constantly discuss with you to refine the ideas.
+ThinkIdea is a human-in-the-loop orchestration agent assisted scientific research skill. From a high level, given an target idea or intuition, you will use the given background under `{project}/Notes/` and expand the idea into detailed concepts, design and implementation details, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. The users will constantly discuss with you to refine the ideas. The overarching goal is to iterativly build a concrete design under the 'Main Ideas' section in `{project}/Notes/Ideas.md`.
 
 ## Workflow Overview
 
@@ -70,9 +70,12 @@ which papers are most relevant and how they inform the research direction. Based
 Unless user is satisfied with the current research progress, you should go back to Step 3 and repeat the process. 
 
 ## Step 6: Summarize Key Insights and Store in Project File
-After the user is satisfied with the current research progress, you should summarize the key insights and store them into the project file. You can use `Plans.md` to record the research plans for paper writing, implementation, and todos. You can also use `Ideas.md` to record the central ideas and concepts - see the file for detailed categorizations. Make sure to update the files in a clear and organized way, so that it is easy for the user to understand the current research progress and the next steps. 
+After the user is satisfied with the current research progress, you should summarize the key insights and store them into the project file. Use `Plans.md` to record the research plans for paper writing, implementation, and todos. Use `Ideas.md` to record the central ideas and concepts - see the file for detailed categorizations. Make sure to update the files in a clear and organized way, use hierarchical structure, bullet points, and formatting to make the information easy to read and understand. 
+
+**Important** it is very likely that an idea is already mentioned in the project file, if that is the case, you should not create a new record for it, but instead update the existing record with new information, or with sub points if it is a main idea. 
 
 ## Important Notes
+- The levels of details in the ideas file vary greatly, from high-level concepts to detailed implementation details. You should use your judgment to decide how much detail to include in each idea, and how to organize the ideas in a clear and logical way.
 - Users may update the notes files manually, always treat the content in the files as the most up-to-date information about the project, and make sure to read them before making any decisions or suggestions.
 - Always keep the user in the loop and make sure to communicate with them regularly to get their feedback and refine the ideas based on the discussion.
-- The workflow is not strictly linear, you can go back and forth between different steps as needed. For example, you may need to go back to Step 1 to read more about the project background, or go back to Step 3 to refine the ideas based on user feedback. 
+- The workflow is not strictly linear, you can go back and forth between different steps as needed. For example, you may need to go back to Step 1 to read more about the project background, or go back to Step 3 to refine the ideas based on user feedback. User may also ask you to read specific papers.

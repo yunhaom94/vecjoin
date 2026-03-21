@@ -1,6 +1,6 @@
 ---
 name: brainstorming-research-ideas
-description: Guides researchers through structured ideation frameworks to discover high-impact research directions. Use when exploring new problem spaces, pivoting between projects, or seeking novel angles on existing work.
+description: Guides researchers through structured ideation frameworks to discover high-impact research directions. Use when exploring new problem spaces, pivoting between projects, or seeking novel angles on existing work. This skill is triggered only by the thinkidea skill when a deep creative thinking session is needed.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
