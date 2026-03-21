@@ -1,5 +1,5 @@
 # Plan
-This file outlines a list of items that need to be done for the project.
+*This file outlines a list of items that need to be done for the project.*
 
 
 
