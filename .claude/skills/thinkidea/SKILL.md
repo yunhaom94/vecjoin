@@ -7,6 +7,8 @@ description: The main driving skill for human-in-the-loop agent assisted researc
 # ThinkIdea
 ThinkIdea is a human-in-the-loop orchestration agent assisted scientific research skill. From a high level, given an target idea or intuition, you will use the given background under `{project}/Notes/` and expand the idea into detailed concepts, design and implementation details, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. The users will constantly discuss with you to refine the ideas. The overarching goal is to iterativly build a concrete design under the 'Main Ideas' section in `{project}/Notes/Ideas.md`.
 
+Before you start the workflow, you should first identify the stages of this research process by reading the project documentation. 
+
 ## Workflow Overview
 
 1. Read the project documentations and understand the research topic and the current progress.
@@ -73,7 +75,14 @@ After the user is satisfied with the current research progress, you should summa
 
 **Important** At the end of a discussion session, you should condense any intermediate insights in the notes, and reorganize the notes as needed to make it more clear and organized. 
 ## Important Notes
-- The levels of details in the ideas file vary greatly, from high-level concepts to detailed implementation details. You should use your judgment to decide how much detail to include in each idea, and how to organize the ideas in a clear and logical way.
+- Always keep the user in the loop and make sure to communicate with them regularly to get their feedback and refine the ideas based on the discussion. For discussion, always use a numbered list for the points you want to discuss, and ask the user to respond with the number of the point they want to discuss. 
+
 - Users may update the notes files manually, or ask you to note something during a discussion session. Always treat the content in the files as the most up-to-date information about the project, and make sure to read them before making any decisions or suggestions.
-- Always keep the user in the loop and make sure to communicate with them regularly to get their feedback and refine the ideas based on the discussion.
+
+- Important: DO NOT change the organization or description of the points that is outside the scope of the user specified task!!! If you find there are other points that are related and you want to merge or reorganize them, always ask the user.
+
+- The levels of details in the ideas file vary greatly, from high-level concepts to detailed implementation details. You should use your judgment to decide how much detail to include in each idea, and how to organize the ideas in a clear and logical way.
+
 - The workflow is not strictly linear, you can go back and forth between different steps as needed. For example, you may need to go back to Step 1 to read more about the project background, or go back to Step 3 to refine the ideas based on user feedback. User may also ask you to read specific papers.
+
+- When doing foundational research, you should invoke literature search more frequently to get more information about the current state of the art, and to get more insights from the related work. When doing incremental research, you may not need to do literature search as frequently, but you should still keep an eye on the related work to make sure your research is novel and relevant.

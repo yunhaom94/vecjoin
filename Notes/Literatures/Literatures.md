@@ -163,3 +163,39 @@ This document contains a list of literatures that is relevant to this project. E
 - **Summary**: Optimizes DiskANN's disk-based graph search by addressing two I/O issues: (1) long routing paths from the static entry vertex to the query's neighborhood, addressed by a query-sensitive entry vertex selection strategy; (2) redundant I/O requests during routing, addressed by an isomorphic mapping that optimizes SSD page layout and an asynchronous Pagesearch algorithm. Achieves 1.5-2.2x QPS improvement over DiskANN at the same accuracy.
 - **Relevance**: Relevant for understanding SSD layout optimization and I/O reduction techniques for disk-resident vector indexes. DiskANN++'s page-aligned SSD layout optimization and asynchronous I/O are relevant to our disk→RAM data staging design, where partition data must be stored contiguously for efficient sequential reads.
 ---
+
+---
+- **Title**: Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs
+- **Author(s)**: Yu. A. Malkov, D. A. Yashunin
+- **Year**: 2018
+- **Venue**: IEEE Transactions on Pattern Analysis and Machine Intelligence (also arXiv 1603.09320)
+- **Summary**: Introduces HNSW, a graph-based approximate nearest neighbor search algorithm using a hierarchical multi-layer structure of proximity graphs. Elements are inserted into layers with exponentially decaying probability, creating a skip-list-like hierarchy where upper layers contain long-range links for fast coarse navigation and lower layers provide fine-grained local search. The algorithm achieves logarithmic search complexity scaling and strong recall-throughput tradeoffs. HNSW set a new state of the art for in-memory ANN search and became the most widely adopted graph-based ANN algorithm, serving as the backbone of production vector databases (e.g., Milvus, Qdrant, Weaviate) and as the CPU baseline against which GPU methods are benchmarked.
+- **Relevance**: HNSW is the foundational graph-based ANN algorithm that CAGRA, Tagore (NSG/Vamana construction on GPU), and DiskANN build upon. Understanding HNSW's multi-layer graph structure, greedy beam search, and neighbor selection heuristics is essential background for evaluating the per-partition GPU index options in our system. HNSW's CPU-only design and its memory-bound nature (storing full graph in RAM) motivate the GPU-accelerated and disk-aware approaches our project pursues.
+---
+
+---
+- **Title**: DiskANN: Fast Accurate Billion-point Nearest Neighbor Search on a Single Node
+- **Author(s)**: Suhas Jayaram Subramanya, Fnu Devvrit, Harsha Vardhan Simhadri, Ravishankar Krishnawamy, Rohan Kadekodi
+- **Year**: 2019
+- **Venue**: NeurIPS 2019 (also arXiv 1907.05275)
+- **Summary**: Proposes the Vamana graph index and DiskANN system for billion-scale ANN search on a single machine with SSDs. Key contributions: (1) the Vamana graph index, which builds a bounded-degree directed graph with a single global medoid entry point and a robust pruning rule (alpha-pruning) that controls the graph's degree vs. recall tradeoff; (2) a disk-based search algorithm that stores the graph and compressed (PQ) vectors in SSD pages, performs beam search with asynchronous I/O, and uses an in-memory PQ codebook for candidate re-ranking; (3) demonstrates billion-scale search with 5ms latency at 95%+ recall using a single machine with 64GB RAM and SSDs, making billion-scale ANN accessible without distributed clusters.
+- **Relevance**: DiskANN established the paradigm of SSD-resident vector indexes with in-memory compressed representations for billion-scale search. Its Vamana graph construction is the foundation for CAGRA (GPU-parallelized Vamana) and Tagore. DiskANN's SSD page layout strategy and asynchronous I/O beam search directly inform our understanding of disk-based vector data management. Our system differs in that we perform similarity join (not single-query search) and target GPU execution, but DiskANN's disk I/O optimization techniques are foundational context.
+---
+
+---
+- **Title**: RaBitQ: Quantizing High-Dimensional Vectors with a Theoretically Optimal Algorithm
+- **Author(s)**: Jianyang Gao, Cheng Long
+- **Year**: 2024
+- **Venue**: SIGMOD 2024 (also arXiv 2405.12497)
+- **Summary**: Proposes RaBitQ, a randomized quantization method that encodes high-dimensional vectors using single-bit codes with theoretical error bounds. Unlike heuristic quantization methods (PQ, OPQ, ScaNN), RaBitQ provides a rigorous theoretical framework: it projects normalized vectors onto a random orthogonal basis and rounds each coordinate to the nearest bit, achieving near-optimal quantization error. Key innovations include an efficient estimator for inner product/distance computation from quantized codes and a reranking strategy that avoids accessing raw vectors. Achieves competitive recall-QPS tradeoffs with 32x compression (1 bit per dimension) while providing theoretical guarantees on estimation error.
+- **Relevance**: RaBitQ is the underlying quantization method for IVF-RaBitQ (GPU), one of our primary candidate per-partition indexes. Understanding its theoretical foundations — particularly the single-bit encoding, error bounds, and distance estimation without raw vector access — is essential for reasoning about our system's accuracy guarantees and VRAM footprint. The ability to avoid raw vector reranking is especially valuable in our VRAM-constrained setting where storing both quantized codes and raw vectors per partition would double memory requirements.
+---
+
+---
+- **Title**: Product Quantization for Nearest Neighbor Search
+- **Author(s)**: Hervé Jégou, Matthijs Douze, Cordelia Schmid
+- **Year**: 2011
+- **Venue**: IEEE Transactions on Pattern Analysis and Machine Intelligence
+- **Summary**: Introduces product quantization (PQ), a vector compression technique that decomposes high-dimensional vectors into subvectors and quantizes each subspace independently with a small codebook. Distances between a query vector and compressed database vectors are approximated using precomputed lookup tables (ADC — asymmetric distance computation), enabling fast exhaustive search over billions of vectors with compact codes (e.g., 8 bytes per 128-d vector). Combined with an inverted file index (IVF) for non-exhaustive search, IVF-PQ became the dominant paradigm for large-scale approximate nearest neighbor search. The paper also introduces the IVFADC structure that combines coarse quantization for candidate selection with PQ for distance approximation.
+- **Relevance**: PQ is the foundational compression technique underlying FAISS's IVF-PQ index, one of our candidate per-partition GPU indexes. The IVF-PQ structure — coarse quantizer for inverted file partitioning, PQ codes for compressed distance estimation — is the template for all IVF-based indexes in our system. Understanding PQ's subspace decomposition, codebook training, and ADC distance computation is prerequisite background for RaBitQ (which improves upon PQ's heuristic approach with theoretical guarantees) and for the GPU kernel design that must perform lookup-table-based distance computation in VRAM. (Note: Full text PDF was not available for download.)
+---
