@@ -45,14 +45,11 @@ You can use `brainstorming-research-ideas` and `creative-thinking-for-research` 
 
 ## Step 4: Related Work Search
 
-If the knowledge gap is related to understanding the current state of the art, you should conduct related work search to find relevant papers, invoke the `literature-search` skill as a sub-agent using the
-Agent tool. Provide it with:
+If the knowledge gap is related to understanding the current state of the art, after a few rounds of discussion for grounding, or prompted by users, you should conduct related work search to find relevant papers, invoke the `literature-search` skill as a sub-agent using the Agent tool. Provide it with:
 - The **topic summary** (from Ideas.md or the current discussion)
 - The **problem statement** (the specific research question being explored)
 
-The literature-search skill will autonomously search Semantic Scholar, arXiv, and Google Scholar,
-filter candidates by relevance, download PDFs to `{project}/Notes/Literatures/`, and append
-structured summaries to `{project}/Notes/Literatures/Literatures.md`.
+The literature-search skill will autonomously search Semantic Scholar, arXiv, and Google Scholar, filter candidates by relevance, download PDFs to `{project}/Notes/Literatures/`, and append structured summaries to `{project}/Notes/Literatures/Literatures.md`.
 
 Example invocation:
 ```
@@ -64,7 +61,7 @@ Use the Agent tool with the literature-search skill:
 ```
 
 After the literature-search agent completes, review its results and discuss with the user
-which papers are most relevant and how they inform the research direction. Based on user feedback, update the record in `{project}/Notes/Literatures/Literatures.md`, removing less relevant papers and adding any additional notes or insights from the discussion.
+which papers are most relevant and how they inform the research direction. Based on user feedback, update the record in `{project}/Notes/Literatures/Literatures.md`, removing less relevant papers and adding any additional notes or insights from the discussion. 
 
 ## Step 5: Iterate
 Unless user is satisfied with the current research progress, you should go back to Step 3 and repeat the process. 
@@ -74,8 +71,9 @@ After the user is satisfied with the current research progress, you should summa
 
 **Important** it is very likely that an idea is already mentioned in the project file, if that is the case, you should not create a new record for it, but instead update the existing record with new information, or with sub points if it is a main idea. 
 
+**Important** At the end of a discussion session, you should condense any intermediate insights in the notes, and reorganize the notes as needed to make it more clear and organized. 
 ## Important Notes
 - The levels of details in the ideas file vary greatly, from high-level concepts to detailed implementation details. You should use your judgment to decide how much detail to include in each idea, and how to organize the ideas in a clear and logical way.
-- Users may update the notes files manually, always treat the content in the files as the most up-to-date information about the project, and make sure to read them before making any decisions or suggestions.
+- Users may update the notes files manually, or ask you to note something during a discussion session. Always treat the content in the files as the most up-to-date information about the project, and make sure to read them before making any decisions or suggestions.
 - Always keep the user in the loop and make sure to communicate with them regularly to get their feedback and refine the ideas based on the discussion.
 - The workflow is not strictly linear, you can go back and forth between different steps as needed. For example, you may need to go back to Step 1 to read more about the project background, or go back to Step 3 to refine the ideas based on user feedback. User may also ask you to read specific papers.
