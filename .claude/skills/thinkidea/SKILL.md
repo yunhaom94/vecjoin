@@ -1,22 +1,20 @@
 ---
 name: thinkidea
-description: The main driving skill for human-in-the-loop agent assisted research. Given an target idea or intuition, the agent will expand the idea into detailed concepts, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. After the ideas have been thoroughly explored, the agent will summarize the key insights and store them into the project file.
+description: The main driving skill for human-in-the-loop agent assisted research. Given an target idea or intuition, the agent will expand the idea into detailed concepts, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. After the ideas have been thoroughly explored, the agent will summarize the key insights and store them into the project file. This skill is invoked when the user specifies an topic, idea or intuition that they want to expand.
 ---
 
 
 # ThinkIdea
-ThinkIdea is a human-in-the-loop orchestration agent assisted scientific research skill. From a high level, given an target idea or intuition, you will expand the idea into detailed concepts, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. The users will discuss with you to refine the ideas. The basic workflow is as follows:
+ThinkIdea is a human-in-the-loop orchestration agent assisted scientific research skill. From a high level, given an target idea or intuition, you will use the given background under `{project}/Notes/` and expand the idea into detailed concepts, implementation details, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. The users will constantly discuss with you to refine the ideas.
+
+## Workflow Overview
 
 1. Read the project documentations and understand the research topic and the current progress.
 2. Understand user input in the context of the project and the current research progress.
-
-Loop
-3. Expand the idea into detailed concepts, todos, and new ideas. Use ``brainstorming-research-ideas`` and ``creative-thinking-for-research`` skills to help you with this step.
-4. Conduct related work search to find relevant papers if needed. Use ``literature-search`` skill to help you with this step.
-5. Whenever you think you have enough insights, ideas, or progress, communicate with the users to for discussion and feedback. Refine the ideas based on the discussion.
-6. Repeat the above steps until the user is satisfied for the current round of research.
-
-7. Summarize the key insights and store them into the project file, see Section `Project File Management` for more details.
+3. Expand the idea into detailed concepts, todos, and new ideas. Use ``brainstorming-research-ideas`` and ``creative-thinking-for-research`` skills if needed to help you with this step.
+4. Conduct related work search to find relevant papers if needed or asked. Use ``literature-search`` skill to help you with this step.
+5. Go to 3 and repeat, until the user is satisfied for the current round of research.
+6. Summarize the key insights and store them into the project file, see Section `Project File Management` for more details.
 
 ## Project Structure
 
@@ -25,14 +23,56 @@ The project structure is as follows:
 {project}/Notes/
 |-- Ideas.md # Central idea tracking
 |-- Plans.md # Research plans for paper writing, implementation, and todos
-|-- Discussions.md # Record of discussions with users
-|-- Literature/ # Folder for storing literature review notes
-    └── Literature.md # File for summarizing and tracking literature review
+|-- Literatures/ # Folder for storing PDFs and literature tracking
+    └── Literatures.md # File for summarizing and tracking literature review
 ```
 
 Under [templates/](templates/) directory, you can find templates for the above markdown files, along with the description of what each file is for and how to use it. If `{project}/Notes/` directory or any of the above files do not exist, you should create them based on the templates and fill in the initial information based on the project documentation.
 
+## Step 1: Understand the Project and Research Progress
 
-## Literature Management
+Use `Ideas.md` and `Plans.md` to understand the current research progress and the background of the project. You can also read any other files under `Notes/` to get more information about the project. If there are any code files, you can also read them to understand the implementation details.
 
-When you find relevant papers during the research process, you should create a new markdown file under `{project}/Notes/Literature/` to summarize the paper. The file name should be the title of the paper. The content of the file should include the following sections:
+## Step 2: Understand User Input
+
+You should use the project background and the current research progress to understand the user input. The first thing you should do is to ask the user to clarify the idea or intuition they want to explore, and make sure you understand it correctly. Ask user to clarify the idea if it is not clear to you. You can also ask user to provide more information about the idea if needed, such as the motivation behind it, the potential impact, and any related work they are aware of.
+
+## Step 3: Expand the Idea
+
+After you have a clear understanding of the idea, you should expand it into detailed concepts, implementation details, create new ideas, explore the idea from different perspectives, and generate new insights through an iterative process. All of the above may occur at the same time, or in any order. 
+
+You can use `brainstorming-research-ideas` and `creative-thinking-for-research` skills to help you with this step. You should also communicate with the user to get their feedback and refine the ideas based on the discussion.
+
+## Step 4: Related Work Search
+
+If the knowledge gap is related to understanding the current state of the art, you should conduct related work search to find relevant papers, invoke the `literature-search` skill as a sub-agent using the
+Agent tool. Provide it with:
+- The **topic summary** (from Ideas.md or the current discussion)
+- The **problem statement** (the specific research question being explored)
+
+The literature-search skill will autonomously search Semantic Scholar, arXiv, and Google Scholar,
+filter candidates by relevance, download PDFs to `{project}/Notes/Literatures/`, and append
+structured summaries to `{project}/Notes/Literatures/Literatures.md`.
+
+Example invocation:
+```
+Use the Agent tool with the literature-search skill:
+  "Search for related work on the following topic:
+   Topic: {summary of the research topic}
+   Problem: {the specific problem or question}
+   Project root: {project root path}"
+```
+
+After the literature-search agent completes, review its results and discuss with the user
+which papers are most relevant and how they inform the research direction. Based on user feedback, update the record in `{project}/Notes/Literatures/Literatures.md`, removing less relevant papers and adding any additional notes or insights from the discussion.
+
+## Step 5: Iterate
+Unless user is satisfied with the current research progress, you should go back to Step 3 and repeat the process. 
+
+## Step 6: Summarize Key Insights and Store in Project File
+After the user is satisfied with the current research progress, you should summarize the key insights and store them into the project file. You can use `Plans.md` to record the research plans for paper writing, implementation, and todos. You can also use `Ideas.md` to record the central ideas and concepts - see the file for detailed categorizations. Make sure to update the files in a clear and organized way, so that it is easy for the user to understand the current research progress and the next steps. 
+
+## Important Notes
+- Users may update the notes files manually, always treat the content in the files as the most up-to-date information about the project, and make sure to read them before making any decisions or suggestions.
+- Always keep the user in the loop and make sure to communicate with them regularly to get their feedback and refine the ideas based on the discussion.
+- The workflow is not strictly linear, you can go back and forth between different steps as needed. For example, you may need to go back to Step 1 to read more about the project background, or go back to Step 3 to refine the ideas based on user feedback. 

@@ -395,3 +395,6 @@ vcpkg_installed/
 Testing/
 .cache/
 .vscode/
+
+
+.venv/
