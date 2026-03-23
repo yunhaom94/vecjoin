@@ -4,8 +4,8 @@ description: >
   Conducts comprehensive related work search across Semantic Scholar, arXiv, and Google Scholar
   for a given research topic. Searches academic databases via APIs, filters candidates by
   title/abstract relevance, obtains full texts for deeper checks, converts papers to Markdown
-  via markitdown for analysis and storage, and writes structured summaries. This skill is invoked as a sub-agent by the thinkidea skill during
-  the literature management phase — it is not user-invocable.
+  via markitdown for analysis and storage, and writes structured summaries. This skill can be invoked as a sub-agent by the thinkidea skill.
+context: fork
 ---
 
 # Literature Search
