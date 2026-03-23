@@ -1,0 +1,43 @@
+{
+  "skill_name": "thinkidea",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "- result buffer issue: fixed VRAM alloc but skewed partitions blow it up\n- what if we estimate density from coarse centroids?\n- allocate budget per-pair adaptively\n- does this mess with double-buffering?",
+      "expected_output": "Agent reads Ideas.md, engages directly with the adaptive allocation idea. Discusses centroid-distance-based density estimation, overhead, interaction with double-buffering, and whether it changes partition scheduling. Concise bullet points, not a long essay. Does NOT start by asking clarifying questions.",
+      "files": [],
+      "assertions": [
+        {"name": "reads-project-context", "check": "Agent read Ideas.md before responding"},
+        {"name": "no-unnecessary-clarification", "check": "Response does NOT start with clarifying questions"},
+        {"name": "addresses-density-estimation", "check": "Discusses centroid-based density estimation with tradeoffs"},
+        {"name": "addresses-double-buffering", "check": "Addresses interaction with double-buffering"},
+        {"name": "concise-response", "check": "Response under 400 words"}
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "has anyone done GPU set similarity joins? jaccard/overlap stuff. wondering if scheduling ideas transfer to our partition scheduling",
+      "expected_output": "Agent engages with own knowledge first, then offers lit search. Connects to project's partition scheduling. Short and focused.",
+      "files": [],
+      "assertions": [
+        {"name": "reads-project-context", "check": "Agent read Ideas.md"},
+        {"name": "engages-before-searching", "check": "Provides substantive content, not just 'let me search'"},
+        {"name": "offers-lit-search", "check": "Offers or mentions literature search"},
+        {"name": "connects-to-partition-scheduling", "check": "Links back to the project's partition scheduling"},
+        {"name": "concise-response", "check": "Under 400 words"}
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "need to think about intro for the paper. what angle?",
+      "expected_output": "Agent reads Foundations + Plans.md, proposes narrative arc in bullet points. Identifies key story beats. Concise — structure and angle, not a full draft.",
+      "files": [],
+      "assertions": [
+        {"name": "reads-foundations", "check": "Agent read Ideas.md Foundations and/or Plans.md"},
+        {"name": "identifies-narrative-arc", "check": "Proposes clear narrative arc, not generic advice"},
+        {"name": "concise-response", "check": "Under 400 words"},
+        {"name": "actionable-structure", "check": "Provides concrete bullet-point structure"}
+      ]
+    }
+  ]
+}
