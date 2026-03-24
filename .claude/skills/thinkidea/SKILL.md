@@ -25,7 +25,7 @@ the project stands. **These files mix human and agent writing.** The user adds r
 fragments, shorthand, question marks as placeholders) alongside more structured agent summaries.
 Don't assume polished sections are more important than rough fragments — the rough bits are often
 the user's latest thinking. Preserve the user's raw voice; don't rewrite their shorthand into
-formal prose unless asked.
+formal prose unless asked. **ALWAYS** ask before writing anything to the Notes.
 
 ## Project Structure
 
@@ -193,7 +193,7 @@ gets a focused response. It's OK to say "I don't know" and suggest a lit search.
 - Over-engineering before validating the core hypothesis
 
 ## Important Notes
-
+- ALWAYS ask the user before write anything to the Notes files. 
 - Treat Notes files as the most up-to-date project state. Re-read before making decisions
   that depend on current state — the user may update them manually between sessions.
 - When asked to read a paper from Literatures/, read the Markdown version and discuss it
