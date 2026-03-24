@@ -199,3 +199,130 @@ This document contains a list of literatures that is relevant to this project. E
 - **Summary**: Introduces product quantization (PQ), a vector compression technique that decomposes high-dimensional vectors into subvectors and quantizes each subspace independently with a small codebook. Distances between a query vector and compressed database vectors are approximated using precomputed lookup tables (ADC — asymmetric distance computation), enabling fast exhaustive search over billions of vectors with compact codes (e.g., 8 bytes per 128-d vector). Combined with an inverted file index (IVF) for non-exhaustive search, IVF-PQ became the dominant paradigm for large-scale approximate nearest neighbor search. The paper also introduces the IVFADC structure that combines coarse quantization for candidate selection with PQ for distance approximation.
 - **Relevance**: PQ is the foundational compression technique underlying FAISS's IVF-PQ index, one of our candidate per-partition GPU indexes. The IVF-PQ structure — coarse quantizer for inverted file partitioning, PQ codes for compressed distance estimation — is the template for all IVF-based indexes in our system. Understanding PQ's subspace decomposition, codebook training, and ADC distance computation is prerequisite background for RaBitQ (which improves upon PQ's heuristic approach with theoretical guarantees) and for the GPU kernel design that must perform lookup-table-based distance computation in VRAM. (Note: Full text PDF was not available for download.)
 ---
+
+---
+- **Title**: Access Path Selection in a Relational Database Management System
+- **Author(s)**: P. Griffiths Selinger, M. M. Astrahan, D. D. Chamberlin, R. A. Lorie, T. G. Price
+- **Year**: 1979
+- **Venue**: ACM SIGMOD International Conference on Management of Data
+- **Summary**: Describes the System R query optimizer, the first cost-based optimizer for relational databases. Introduces the dynamic programming approach to selecting access paths (indexes, join orders, join methods) for SQL queries, with closed-form I/O cost formulas for different access paths. Established the plan enumeration + cost estimation paradigm used by virtually all modern database systems.
+- **Relevance**: Context for the classic join-scheduling formalization. The Selinger-style DP-over-join-orderings approach contrasts with DiskJoin's MECC graph formulation — Selinger optimizes which order to execute joins with cost formulas, while MECC optimizes the traversal order of a bipartite partition graph to minimize cache misses.
+---
+
+---
+- **Title**: Join Processing in Database Systems with Large Main Memories
+- **Author(s)**: Leonard D. Shapiro
+- **Year**: 1986
+- **Venue**: ACM Transactions on Database Systems (TODS), Vol. 11, No. 3
+- **Summary**: Comprehensive analysis of join algorithms (nested loop, sort-merge, hash join variants including hybrid hash join) under varying memory sizes. Shows that hybrid hash join is optimal for large-memory environments by keeping some partitions in memory while spilling others to disk. Provides I/O cost formulas accounting for buffer allocation and partition sizing.
+- **Relevance**: Foundational I/O cost models for nested block loop join. The tradeoffs analyzed — partition size vs. number of passes, buffer allocation vs. I/O cost — directly parallel our coarse partition sizing and VRAM-adaptive partitioning decisions.
+---
+
+---
+- **Title**: Query Evaluation Techniques for Large Databases
+- **Author(s)**: Goetz Graefe
+- **Year**: 1993
+- **Venue**: ACM Computing Surveys, Vol. 25, No. 2
+- **Summary**: Landmark 100+ page survey covering sorting, hashing, all join algorithms (nested loops, sort-merge, hash, index-based), aggregation, the iterator (Volcano-style) execution model, buffer management, and parallel query evaluation. The most comprehensive reference on physical query processing in relational databases.
+- **Relevance**: Context for the classic approach to join scheduling via closed-form I/O cost formulas. The partitioning and scheduling tradeoffs discussed (partition granularity, buffer allocation, I/O overlap) are directly analogous to our coarse partition sizing and VRAM budget allocation problems.
+---
+
+---
+- **Title**: Buffer Management in Relational Database Systems
+- **Author(s)**: Giovanni Maria Sacco, Mario Schkolnick
+- **Year**: 1986
+- **Venue**: ACM Transactions on Database Systems (TODS), Vol. 11, No. 4
+- **Summary**: Introduces the hot-set model for characterizing buffer requirements of relational queries. A query's hot set is the minimum buffer pages needed to avoid thrashing. Proposes DP/greedy algorithms for optimal buffer page assignment across concurrent queries and integrates buffer allocation into query optimization.
+- **Relevance**: Alternative formalization of join scheduling through buffer allocation optimization. The hot-set model's approach — characterizing minimum cache requirements per operation and optimizing allocation — is conceptually related to our VRAM budget allocation problem where D partition data, index, Q buffers, and result buffers compete for limited VRAM.
+---
+
+---
+- **Title**: NOCAP: Near-Optimal Correlation-Aware Partitioning Joins
+- **Author(s)**: Zhaoxing Zhu, Xiao Hu, Manos Athanassoulis
+- **Year**: 2023
+- **Venue**: Proceedings of the ACM on Management of Data (PACMMOD), Vol. 1, No. 4
+- **Summary**: Formalizes hybrid hash join partition-to-memory assignment as a knapsack-style optimization problem, exploiting data correlations between partition sizes and join selectivities. By solving a knapsack problem (which partitions to keep in memory given a budget), the join significantly reduces I/O compared to random hash-based partition assignment.
+- **Relevance**: Closest analog to DiskJoin's MECC formulation in spirit. Both NOCAP and MECC pose join scheduling as combinatorial optimization over which partitions to cache. NOCAP uses knapsack (which partitions to keep), MECC uses graph edge-covering (what order to process pairs). Both exploit the known-a-priori workload for offline optimization.
+---
+
+
+---
+- **Title**: Ginex: SSD-enabled Billion-scale Graph Neural Network Training on a Single Machine via Provably Optimal In-memory Caching
+- **Author(s)**: Yeonhong Park, Sunhong Min, Jae W. Lee
+- **Year**: 2022
+- **Venue**: PVLDB, Vol. 15, No. 11 (VLDB 2022)
+- **Summary**: First SSD-based GNN training system for billion-node graphs on a single machine. Separates GNN's sample and gather phases (inspector-executor model) so the access sequence is known before execution, enabling Belady's optimal cache replacement for feature vectors. Achieves up to 2.67x throughput improvement over SSD-extended PyTorch Geometric.
+- **Relevance**: Almost identical conceptual insight to DiskJoin. Both exploit predetermined access sequences to apply Belady's optimal caching — Ginex via the sampling phase, DiskJoin via the bipartite bucket graph. Validates the "predetermined access sequence → Belady's caching" pattern applicable to our system.
+---
+
+---
+- **Title**: P-OPT: Practical Optimal Cache Replacement for Graph Analytics
+- **Author(s)**: Vignesh Balaji, Neal Crago, Aamer Jaleel, Brandon Lucia
+- **Year**: 2021
+- **Venue**: IEEE International Symposium on High-Performance Computer Architecture (HPCA 2021)
+- **Summary**: Emulates Belady's MIN optimal cache replacement for graph analytics by using the transpose of a graph's adjacency matrix to predict future memory accesses. Achieves near-optimal cache hit rates without expensive offline profiling, demonstrating that structured workloads (graph processing) enable practical optimal caching infeasible for general workloads.
+- **Relevance**: Same conceptual insight as DiskJoin and Ginex — exploiting workload structure for optimal caching. Reinforces the design principle underlying our data scheduling: the predetermined partition-pair access sequence enables optimal caching across our disk→RAM→VRAM hierarchy.
+---
+
+---
+- **Title**: Speedup Graph Processing by Graph Ordering (Gorder)
+- **Author(s)**: Hao Wei, Jeffrey Xu Yu, Can Lu, Xuemin Lin
+- **Year**: 2016
+- **Venue**: ACM SIGMOD International Conference on Management of Data (SIGMOD 2016)
+- **Summary**: Proposes Gorder, a graph vertex reordering algorithm that greedily optimizes a neighborhood-based locality score so that frequently co-accessed vertices are stored nearby in memory. Uses a sliding window greedy algorithm. Demonstrates significant speedups (up to 3-5x) across multiple graph algorithms including BFS, PageRank, and SSSP.
+- **Relevance**: Direct ancestor of DiskJoin's task ordering technique. DiskJoin adapts Gorder's objective function to reorder the bipartite bucket graph. Our system can apply the same Gorder-style reordering to partition-pair scheduling at both the RAM and VRAM cache levels.
+---
+
+---
+- **Title**: Graph Reordering for Cache-Efficient Near Neighbor Search
+- **Author(s)**: Benjamin Coleman, Santiago Segarra, Alexander J. Smola, Anshumali Shrivastava
+- **Year**: 2022
+- **Venue**: Advances in Neural Information Processing Systems (NeurIPS 2022)
+- **Summary**: Applies graph reordering techniques to ANN graph indices (HNSW, NSG) to reduce cache misses during search. Demonstrates that graph-based ANN search suffers from poor cache locality and that reordering vertex IDs so nearby graph vertices are stored in nearby memory locations significantly improves QPS.
+- **Relevance**: Bridges graph reordering (Gorder) with vector search workloads. Demonstrates the applicability of locality-aware reordering to ANN indices, relevant both for our partition-level scheduling and potentially for within-partition GPU cache performance with graph-based indexes (CAGRA/HNSW).
+---
+
+---
+- **Title**: A Closer Look at Lightweight Graph Reordering
+- **Author(s)**: Priyank Faldu, Jeff Diamond, Boris Grot
+- **Year**: 2019
+- **Venue**: IEEE International Symposium on Workload Characterization (IISWC 2019)
+- **Summary**: Evaluates lightweight graph reordering techniques and proposes Degree-Based Grouping (DBG), a simple reordering that segregates high-degree vertices into contiguous memory. Key finding: even simple reorderings capture the majority of the cache benefit of expensive algorithms like Gorder, at a fraction of the preprocessing cost.
+- **Relevance**: Practical insight for our partition ordering. If lightweight reordering captures most of the cache benefit, our partition-pair scheduling may not need full Gorder optimization — a simpler heuristic could achieve comparable I/O reduction. Especially relevant given our moderate partition count (~100-200).
+---
+
+---
+- **Title**: GridGraph: Large-Scale Graph Processing on a Single Machine Using 2-Level Hierarchical Partitioning
+- **Author(s)**: Xiaowei Zhu, Wentao Han, Wenguang Chen
+- **Year**: 2015
+- **Venue**: USENIX Annual Technical Conference (USENIX ATC 2015)
+- **Summary**: Out-of-core graph processing system using 2D partitioning (vertex chunks × edge blocks) with a dual sliding window for streaming edges. Selective scheduling of edge blocks based on which vertex chunks are cached minimizes I/O for graphs far exceeding main memory.
+- **Relevance**: Same partition-order-for-locality principle as our system. GridGraph's 2D edge grid is structurally analogous to our bipartite bucket graph: edge blocks connect source/destination vertex chunks just as partition pairs connect D and Q partitions.
+---
+
+---
+- **Title**: X-Stream: Edge-Centric Graph Processing Using Streaming Partitions
+- **Author(s)**: Amitabha Roy, Ivo Mihailovic, Willy Zwaenepoel
+- **Year**: 2013
+- **Venue**: ACM Symposium on Operating Systems Principles (SOSP 2013)
+- **Summary**: Introduces an edge-centric scatter-gather model for out-of-core graph processing that streams edges sequentially from disk. Partitions vertices so each partition's state fits in memory, then streams edges through — maximizing sequential I/O bandwidth rather than performing random accesses.
+- **Relevance**: Conceptually similar to our block nested loop join: pin one partition in fast memory, stream the other data through. X-Stream demonstrates that sequential streaming with cache-sized partitions is effective for out-of-core processing.
+---
+
+---
+- **Title**: Scheduling Multiprocessor Tasks with Equal Processing Times as a Mixed Graph Coloring Problem
+- **Author(s)**: Yuri N. Sotskov, Ekaterina I. Mihova
+- **Year**: 2021
+- **Venue**: Algorithms (MDPI), Vol. 14, No. 8, Article 246
+- **Summary**: Reduces multiprocessor scheduling with simultaneous tasks and precedence constraints to a mixed graph coloring problem. Vertices are tasks, edges are conflicts (cannot overlap), arcs are precedence constraints. Connects scheduling theory to graph coloring theory.
+- **Relevance**: Example of task scheduling formalized as a graph problem, providing context for DiskJoin's MECC formalization. Graph coloring addresses resource conflict avoidance, while MECC addresses cache reuse maximization — both demonstrate that graph-based formalization enables principled scheduling.
+---
+
+---
+- **Title**: Developing Graph-Based Co-Scheduling Algorithms on Multicore Computers
+- **Author(s)**: Ligang He, Hao Zhu, Stephen A. Jarvis
+- **Year**: 2016
+- **Venue**: IEEE Transactions on Parallel and Distributed Systems (TPDS), Vol. 27, No. 6
+- **Summary**: Formalizes job co-scheduling on shared-cache multicore processors as graph partitioning, where vertices are jobs and edge weights encode cache contention. Proposes algorithms for optimal/near-optimal job groupings that minimize shared cache interference.
+- **Relevance**: Example of scheduling as graph partitioning for cache sharing. He et al.'s graph encodes cache contention (conflict avoidance), while DiskJoin's bucket graph encodes cache sharing (locality maximization) — both use graph structure for cache-aware scheduling.
+---

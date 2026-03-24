@@ -20,42 +20,68 @@ You will receive two inputs from the calling agent:
 ## Workflow Overview
 
 ```
-Search APIs (Semantic Scholar + arXiv)
+Search APIs (Semantic Scholar + arXiv)  ← single script call, multiple queries, stdout JSON
         │
         ▼
-Phase 1: Filter by title + abstract relevance (~50-100 → ~10-20)
+Phase 1: Filter by title + abstract relevance (~50-100 → ~10-20)  ← in your context, no files
         │
         ▼
-Phase 2: Obtain full texts, check deeper relevance (~10-20 → ~5-15)
+Phase 2: Obtain full texts, check deeper relevance (~10-20 → ~5-15)  ← temp PDFs in system temp dir
         │
         ▼
 Phase 3: Download PDFs → convert to Markdown via markitdown → delete PDFs → write summaries
         │
         ▼
-Return summary report to calling agent
+Return summary report to calling agent  ← as text in your response, not as a file
 ```
+
+## CRITICAL: Temp File Discipline
+
+The previous version of this skill caused agents to dump dozens of intermediate files (JSON
+search results, ad-hoc Python scripts, intermediate Markdown reports) into the project root.
+This is unacceptable. Follow these rules strictly:
+
+1. **Use `{project_root}/.tmp/` for all temporary files.** Create this directory at the start
+   of the search. All intermediate files (downloaded PDFs, etc.) go here — never in the
+   project root or any other project directory.
+
+2. **Delete `.tmp/` when finished.** After all papers are processed and stored in
+   `Notes/Literatures/`, delete the entire `.tmp/` directory and its contents. If deletion
+   is blocked by policy, tell the user to clean up `{project_root}/.tmp/`.
+
+3. **All search/filter data stays in memory.** The search script outputs JSON to stdout —
+   read it from the terminal output. Filter and rank papers in your context window. Do not
+   save search results or intermediate JSON to disk.
+
+4. **Never write ad-hoc Python scripts.** The bundled scripts handle search and download.
+   If you need to process data, do it by reasoning in your context, not by writing and
+   running throwaway scripts.
+
+5. **Your summary report is returned as text** in your response message to the calling agent.
+   Do not create a Markdown file for the report.
+
+The only permanent files this skill creates are in `Notes/Literatures/`.
 
 ## Phase 0: Search Academic Databases
 
-Run the bundled search script to query Semantic Scholar and arXiv in parallel. The script
-handles API calls, rate limiting, deduplication, and returns a unified JSON list of candidates.
+The bundled search script accepts multiple queries in a single invocation. Derive 2-4 search
+queries from the topic and problem, then run them all at once:
 
 ```bash
 python "<skill-dir>/scripts/search_papers.py" \
-  --query "<search query terms derived from topic and problem>" \
+  --queries "query one" "query two" "query three" \
   --max-results 50
 ```
 
-You should derive 2-3 different search queries from the topic_summary and problem_statement to
-maximize coverage. Run the script once per query and merge the results (the script handles
-dedup by title similarity and DOI matching).
+The script searches both Semantic Scholar and arXiv for each query, deduplicates across all
+results, and prints a unified JSON array to stdout. Parse the JSON from the terminal output
+directly — do not redirect to a file.
 
-If the `scholarly` Python package is available, you can also search Google Scholar:
+If the `scholarly` Python package is available, you can also search Google Scholar as a bonus:
 ```bash
 python "<skill-dir>/scripts/search_scholar.py" --query "<query>" --max-results 20
 ```
-Google Scholar is a bonus source — if it fails due to rate limiting or missing dependencies,
-proceed with Semantic Scholar + arXiv results alone.
+If it fails due to rate limiting or missing dependencies, proceed with the main results.
 
 ### Constructing Good Search Queries
 
@@ -64,22 +90,20 @@ into queries that an academic search engine would understand. For example:
 - Topic: "efficient vector similarity search" + Problem: "approximate nearest neighbor for high-dimensional data"
 - Queries: `"approximate nearest neighbor" high-dimensional`, `vector similarity search efficient`, `ANN index high-dimensional`
 
-## Phase 1: Title + Abstract Filtering
+## Phase 1: Title + Abstract Filtering (In-Context)
 
-For each candidate paper returned by the search scripts, evaluate relevance based on its
-title and abstract against both the topic_summary and the problem_statement.
+Work entirely in your context window — no files.
 
-Classify each paper into one of three categories:
+For each candidate paper from the search output, evaluate relevance based on title and
+abstract against both the topic_summary and problem_statement.
+
+Classify each paper:
 - **highly relevant**: Directly addresses the problem or a core aspect of the topic
 - **somewhat relevant**: Related methodology, adjacent problem, or useful background
 - **not relevant**: Different domain, tangential mention, or not useful
 
-Keep papers classified as "highly relevant" or "somewhat relevant". Target ~10-20 papers
-after this phase. If you have more, tighten your criteria. If fewer than 5, broaden your
-search queries and try again.
-
-Process papers in batches of 10-15 to avoid overwhelming your context. For each batch,
-list the titles and abstracts, then reason about relevance.
+Keep "highly relevant" and "somewhat relevant" papers. Target ~10-20 after this phase.
+If you have more, tighten criteria. If fewer than 5, broaden search queries and re-run.
 
 ## Phase 2: Full Text Relevance Check
 
@@ -95,12 +119,9 @@ For each paper that passed Phase 1, attempt to obtain the full text:
 3. **Try arXiv** if the paper has an arXiv ID but wasn't found via arXiv search
 
 For papers where you can obtain the PDF:
-- Download it to a temporary location using the download script
-- Convert it to Markdown using `markitdown` for analysis:
-  ```bash
-  markitdown "/tmp/<sanitized_title>.pdf" -o "/tmp/<sanitized_title>.md"
-  ```
-- Read the converted Markdown to skim introduction, methodology, and conclusion sections
+- Download to the system temp directory (see Phase 3c for exact commands)
+- Convert to Markdown using `markitdown` for analysis
+- Skim introduction, methodology, and conclusion to assess relevance
 - Determine if the paper is truly relevant to the specific problem
 
 For papers where the PDF is unavailable:
@@ -131,22 +152,28 @@ listed (match by title). Skip any paper that's already there.
 
 For each relevant paper with an available PDF URL:
 
-1. Download the PDF to a temporary location:
+1. Ensure the temp directory exists:
    ```bash
-   python "<skill-dir>/scripts/download_pdf.py" \
-     --url "<pdf_url>" \
-     --output "/tmp/<sanitized_title>.pdf"
+   mkdir -p "{project_root}/.tmp"
    ```
 
-2. Convert the PDF to Markdown using `markitdown`:
+2. Download the PDF to the project temp directory:
    ```bash
-   markitdown "/tmp/<sanitized_title>.pdf" -o "{project_root}/Notes/Literatures/<sanitized_title>.md"
+   python "<skill-dir>/scripts/download_pdf.py" --url "<pdf_url>" --output "{project_root}/.tmp/<sanitized_title>.pdf"
+   ```
+
+3. Convert the PDF to Markdown using `markitdown` — output goes to the project Literatures dir:
+   ```bash
+   markitdown "{project_root}/.tmp/<sanitized_title>.pdf" -o "{project_root}/Notes/Literatures/<sanitized_title>.md"
    ```
    If `markitdown` is not installed, install it first: `pip install 'markitdown[pdf]'`.
 
-3. Delete the temporary PDF:
+4. After **all** papers are processed, delete the entire temp directory:
+   ```powershell
+   Remove-Item "{project_root}/.tmp" -Recurse -Force
+   ```
    ```bash
-   rm "/tmp/<sanitized_title>.pdf"
+   rm -rf "{project_root}/.tmp"
    ```
 
 The title should be sanitized for use as a filename (remove special characters, truncate
@@ -173,7 +200,8 @@ If the full text was unavailable, add a note at the end of the Summary:
 
 ## Output
 
-When finished, return a structured summary to the calling agent:
+Return a structured summary **as text in your response** to the calling agent. Do not create
+a file for this report.
 
 ```
 ## Literature Search Results
@@ -199,6 +227,8 @@ When finished, return a structured summary to the calling agent:
 
 ## Important Notes
 
+- **No workspace pollution.** The only permanent files this skill creates are in
+  `Notes/Literatures/`. Temp files go in `{project_root}/.tmp/` and must be deleted when done.
 - **Rate limiting**: Add 1-second delays between API calls to avoid being blocked. The
   bundled scripts handle this for the initial search, but be mindful when making additional
   API calls (e.g., Unpaywall lookups).

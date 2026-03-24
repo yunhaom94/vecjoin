@@ -88,6 +88,17 @@ Details TBD. Candidate per-partition index implementations: FAISS IVF-PQ, CAGRA 
 - **Open question: Disk layout for coarse partitions.** After clustering, should we reorganize data on disk so each coarse partition is stored contiguously (like DiskJoin)? One-time preprocessing cost enables sequential DMA reads. How does this interact with GPUDirect Storage (GDS)?
 - **Open question: Unbalanced partitions.** K-means on real data produces uneven clusters. Oversized partitions may not fit in VRAM with their pair. Options: balanced k-means, post-hoc splitting, or adaptive subdivision at runtime.
 - **Gap in literature:** GPU-accelerated vector *similarity join* at billion scale is essentially unexplored. DiskJoin (SIGMOD 2026) is the only direct predecessor and is CPU-only. Most GPU vector search work focuses on single-query ANN, not all-pairs join. This confirms the novelty of the research direction.
+- **DiskJoin's MECC formalization is novel.** Modeling partition-based join scheduling as a graph edge-covering problem (MECC: Minimum Edge Cover with Cache) appears unique in the literature. No prior join processing work formalizes the scheduling as a caching-constrained edge cover. The joint reordering (Gorder) + optimal caching (Belady) decomposition is also distinctive — prior work studies these components separately.
+- **Alternative join scheduling formalizations for context:**
+  - *Classic approach*: Selinger-style closed-form I/O cost formulas + DP over join orderings (Selinger 1979, Shapiro 1986, Graefe 1993)
+  - *Buffer allocation as optimization*: hot-set model, DP/greedy over buffer page assignment (Sacco & Schkolnick 1986)
+  - *Knapsack formulation*: NOCAP (Zhu et al., VLDB 2023) formalizes hybrid hash join partition-to-memory assignment as a knapsack problem — closest analog to DiskJoin's graph formulation in spirit (combinatorial optimization over which partitions to cache)
+- **Graph-based scheduling in adjacent domains (parallels to MECC):**
+  - *GNN training*: Ginex (VLDB 2022) uses offline Belady's for feature caching, exploiting graph structure for optimal caching — almost identical conceptual insight to DiskJoin. P-OPT (HPCA 2021) does the same for graph analytics.
+  - *Graph reordering for locality*: Gorder (Wei et al., SIGMOD 2016) is the direct ancestor. Coleman et al. (2021) apply graph reordering for cache-efficient ANN graph traversal. Faldu et al. (2020) show even simple reorderings capture most cache benefit.
+  - *Out-of-core graph processing*: GridGraph (ATC 2015), X-Stream (SOSP 2013) partition graph data for cache-friendly streaming — same partition-order-for-locality principle.
+  - *Task scheduling as graph problem*: Sotskov & Mihova (2021) reduce multiprocessor scheduling to graph coloring; He et al. (2016) formalize co-scheduling as graph partitioning for cache sharing.
+  - No existing work uses a TSP/Hamiltonian formulation for join scheduling, despite structural similarities.
 
 
 ## Foundations

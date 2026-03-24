@@ -5,6 +5,7 @@ Returns a unified, deduplicated JSON list of candidate papers.
 
 Usage:
     python search_papers.py --query "approximate nearest neighbor" --max-results 50
+    python search_papers.py --queries "query one" "query two" "query three" --max-results 30
     python search_papers.py --query "vector similarity search" --max-results 30 --sources semantic_scholar,arxiv
 """
 
@@ -228,32 +229,46 @@ def deduplicate(papers: list) -> list:
 
 def main():
     parser = argparse.ArgumentParser(description='Search academic papers across APIs')
-    parser.add_argument('--query', required=True, help='Search query string')
+    parser.add_argument('--query', help='Single search query string')
+    parser.add_argument('--queries', nargs='+', help='Multiple search queries (run all, deduplicate across)')
     parser.add_argument('--max-results', type=int, default=50,
-                        help='Max results per source (default: 50)')
+                        help='Max results per source per query (default: 50)')
     parser.add_argument('--sources', default='semantic_scholar,arxiv',
                         help='Comma-separated list of sources (default: semantic_scholar,arxiv)')
     args = parser.parse_args()
 
+    # Collect all queries from both --query and --queries
+    queries = []
+    if args.query:
+        queries.append(args.query)
+    if args.queries:
+        queries.extend(args.queries)
+    if not queries:
+        parser.error('At least one of --query or --queries is required')
+
     sources = [s.strip() for s in args.sources.split(',')]
     all_papers = []
 
-    if 'semantic_scholar' in sources:
-        print(f"[INFO] Searching Semantic Scholar for: {args.query}", file=sys.stderr)
-        ss_papers = search_semantic_scholar(args.query, args.max_results)
-        print(f"[INFO] Found {len(ss_papers)} results from Semantic Scholar", file=sys.stderr)
-        all_papers.extend(ss_papers)
-        time.sleep(1)
+    for qi, query in enumerate(queries):
+        if qi > 0:
+            time.sleep(1)  # Rate limiting between queries
 
-    if 'arxiv' in sources:
-        print(f"[INFO] Searching arXiv for: {args.query}", file=sys.stderr)
-        arxiv_papers = search_arxiv(args.query, args.max_results)
-        print(f"[INFO] Found {len(arxiv_papers)} results from arXiv", file=sys.stderr)
-        all_papers.extend(arxiv_papers)
+        if 'semantic_scholar' in sources:
+            print(f"[INFO] [{qi+1}/{len(queries)}] Searching Semantic Scholar for: {query}", file=sys.stderr)
+            ss_papers = search_semantic_scholar(query, args.max_results)
+            print(f"[INFO] Found {len(ss_papers)} results from Semantic Scholar", file=sys.stderr)
+            all_papers.extend(ss_papers)
+            time.sleep(1)
 
-    # Deduplicate
+        if 'arxiv' in sources:
+            print(f"[INFO] [{qi+1}/{len(queries)}] Searching arXiv for: {query}", file=sys.stderr)
+            arxiv_papers = search_arxiv(query, args.max_results)
+            print(f"[INFO] Found {len(arxiv_papers)} results from arXiv", file=sys.stderr)
+            all_papers.extend(arxiv_papers)
+
+    # Deduplicate across all queries and sources
     unique_papers = deduplicate(all_papers)
-    print(f"[INFO] {len(unique_papers)} unique papers after deduplication", file=sys.stderr)
+    print(f"[INFO] {len(all_papers)} total → {len(unique_papers)} unique after deduplication ({len(queries)} queries)", file=sys.stderr)
 
     # Output JSON to stdout
     json.dump(unique_papers, sys.stdout, indent=2, ensure_ascii=False)
