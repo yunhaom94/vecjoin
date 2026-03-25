@@ -18,54 +18,102 @@ Given a database set `D` and a query set `Q` of high-dimensional vectors, find a
 
 This unifies the index-based search and data scheduling into a single design — coarse partitions are data movement units, per-partition indices are the search/pruning mechanism.
 
-### 2. Data Allocation and Scheduling
-Since data is too large to fit in VRAM or even RAM, we partition data and schedule transfers across the disk → RAM → VRAM hierarchy, using DMA to minimize transfer overhead.
 
-#### 2.1 Partitioning Strategy: Hierarchical Two-Level Partitioning
+#### 2 Theoretical Formulation
+
+**Problem setup:**
 - **Target scale:** Billions of vectors at ~1000 dimensions (4KB/vector, ~4TB total).
-- Both `D` and `Q` are partitioned **independently** using clustering (e.g., k-means). This produces a **bipartite bucket graph** where edges represent coarse partition pairs that need comparison.
+- Both `D` and `Q` are partitioned **independently** using k-means clustering (following DiskJoin). This produces a **bipartite bucket graph** G(m,n) where edges represent coarse partition pairs that need comparison.
 - **Construction:** Use a **learning set** (random sample) to determine cluster centers. Stream the full dataset from disk, assigning each vector to its nearest center. Avoids loading 4TB into memory.
-
-**Level 1 — Coarse Partitions (data movement units):**
-- Units of DMA transfer between disk/RAM/VRAM.
-- Sized so that a partition pair fits in VRAM with room for double-buffering.
+- Partitions are units of DMA transfer between disk/RAM/VRAM, sized so that a partition pair fits in VRAM with room for double-buffering.
 - **VRAM-adaptive:** Partition count is determined by available VRAM. The algorithm adapts to different GPU memory sizes (e.g., 80GB A100 → ~115 partitions; 12GB consumer GPU → more partitions, same algorithm).
-- **Coarse-level pruning:** If `dist(c_Di, c_Qj) - r_Di - r_Qj > threshold`, the entire coarse pair is skipped **before any data is loaded**. Evaluated on CPU using only coarse centroids (~0.5MB total).
-- Q's coarse partitions use independent clustering with separate centers. No index is built on Q — Q vectors are queries streamed against D's index.
 
-**Level 2 — Per-Partition Vector Index (search/pruning on GPU):**
-- Build a vector index (IVF, CAGRA, etc.) within each coarse partition of `D`. The index structure serves as the fine-grained pruning mechanism.
-- E.g., IVF on a ~10M-vector partition → ~3000 IVF clusters as fine-grained units.
-- When a coarse pair (D_i, Q_j) is loaded into VRAM, Q_j's vectors are searched against D_i's index entirely on GPU.
+**Variables:**
+- m, n: partition counts for D and Q
+- s_D = |D|/m, s_Q = |Q|/n: block sizes
+- σ: schedule (ordering of block pairs)
+- E(m,n): surviving edges after coarse pruning
+- C: VRAM capacity, B: bandwidth, L: per-transfer latency
+- t_comp(s_D, s_Q): GPU compute time per pair
+- R: result buffer size, idx(s_D): index size per D-block
+
+**VRAM constraints:**
+- s_D + idx(s_D) + 2·s_Q + R ≤ C  (VRAM feasibility, double-buffered Q)
+- C' = C - s_D - idx(s_D) - R  (effective cache budget for Q blocks)
+- recall(m, n) ≥ τ  (accuracy)
+
+**Unified Objective — Pipelined Join Time:**
+- `min_{m, n, σ}  Σᵢ [(s_D + idx(s_D))/B + L]  +  Σ_k max(t_comp(s_D, s_Q), t_xfer(k | σ, C'))`
+- First term: m D-block transition bubbles (unavoidable pipeline stalls)
+- Second term: pipelined pair processing; t_xfer = 0 if Q cached, s_Q/B + L if miss
+
+**Key tradeoff triangle:**
+- More partitions → tighter pruning (fewer edges) but more blocks to schedule, also more compute because within each partition pair, the index is smaller → less pruning → more GPU compute time
+- Fewer partitions → less scheduling overhead but coarser pruning (more wasted I/O)
+- Cache capacity C determines reuse potential — more blocks fitting → more reuse
 
 **Partition size tradeoff — transfer volume vs. transfer count:**
 - Fewer coarse partitions → fewer DMA transfers (less latency overhead), but coarser pruning → more wasted data loaded.
 - More coarse partitions → tighter pruning, less total data transferred, but more DMA transfers with higher per-transfer latency overhead.
 - PCIe 4.0/5.0: latency ~5-10μs, bandwidth ~25-64 GB/s. Crossover at ~0.5-1 MB — coarse partitions should be well above this.
 
-#### 2.2 Execution Model: Block Nested Loop Join on GPU
-- **Pin D_i in VRAM** (as large as possible), **stream Q_j partitions** through.
-- D_i is loaded once and reused across all its neighboring Q partitions. Q partitions are streamed and evicted.
-- This minimizes D reloads since D carries the index overhead that must stay pinned.
-- **VRAM budget equation:**
-  ```
-  VRAM = D_i_data + D_i_index + 2 × Q_j_buf (double-buffer) + 2 × Result_buf (double-buffer) + Scratch
-  ```
-  - D_i_data should be maximized; everything else minimized.
-  - **Result buffer is a key open problem** — was significant in initial experiments. Every GB for results = fewer D vectors pinned = more D reloads.
-  - Possible approach: fixed result buffer with async flush to RAM when full (double-buffer results too), so GPU compute is never stalled.
-  - The learning set could estimate result density per partition pair for smarter VRAM budget allocation.
+**Two regimes determined by t_comp vs. s_Q/B + L:**
+- Compute-bound (t_comp > s_Q/B + L): I/O hidden, T ≈ |E| × t_comp. Schedule irrelevant. Optimize by reducing |E| × t_comp.
+- I/O-bound (t_comp < s_Q/B + L): GPU idles, T ≈ total_data_transferred / B. Schedule critical. Formulations B/C/E apply.
+- Crossover at critical s_D* where α(s_D) = 1/B (for IVF: compute sublinear in s_D, transfer linear in s_Q). Optimal design sits near crossover.
 
-#### 2.3 Index Storage Strategy
+#### 2.1 Block Scheduling
+The idea: nested loop-join, but only partial pairs are compared. We need to find the most optimal order to schedule the block pairs to be loaded in to the VRAM.
+
+**Three modelings of the scheduling sub-problem:**
+Each formulation below models a different approach to optimizing the schedule σ in the unified objective. All share the VRAM constraint (s_D + idx(s_D) + 2·s_Q + R ≤ C) and effective cache budget C' = C - s_D - idx(s_D) - R for Q-block reuse.
+
+**Formulation B — Bipartite Edge Traversal with Cache (Combinatorial):**
+- Two-stage: (1) choose m, n → determines G(m,n), block sizes s_D, s_Q, and cache budget C'; (2) find edge ordering σ minimizing Q-block cache misses under Belady's
+- Stage 2: Minimum Fetches Bipartite Edge Ordering — min_σ |{Q-block cache misses}|, subject to ⌊C'/s_Q⌋ cached Q-blocks
+- Stage 1: grid-search m, n to minimize Stage 2 cost, subject to s_D + idx(s_D) + 2·s_Q + R ≤ C and recall(m,n) ≥ τ
+- NP-hard (Stage 2) → use heuristic (Gorder-style, greedy), grid-search Stage 1
+- Clean separation, bipartite structure exploitable. Weakness: two-stage misses interactions; optimal (m,n) depends on Stage 2 heuristic
+
+**Formulation C — Continuous Relaxation with Reuse Factor (Hybrid):**
+- Total I/O volume: T(m, n) = ρ_D · |D| + ρ_Q · |Q|, where ρ is avg load count per block
+- Pinned-D model: ρ_D = 1; ρ_Q = f(σ, ⌊C'/s_Q⌋), captures schedule quality as a scalar
+- Cache slots for Q: k_Q = ⌊C'/s_Q⌋
+- Joint optimization: min_{m,n} |D| + ρ_Q(m, n, C') · |Q|, s.t. s_D + idx(s_D) + 2·s_Q + R ≤ C, recall(m,n) ≥ τ
+- ρ_Q estimable empirically from learning set — run a few (m,n) on sample data, fit, optimize
+- Bridges combinatorial and analytical: schedule quality captured implicitly via ρ_Q
+
+**Formulation E — Sparse Join Matrix Traversal:**
+- Join matrix J is m × n binary matrix where J[i,j] = 1 iff (D_i, Q_j) ∈ E(m,n). Processing the join = visiting all nonzeros of J.
+- I/O cost: T = s_D · Σᵢ loads(D_i) + s_Q · Σⱼ loads(Q_j). Minimize total block loads over row/column permutation and panel decomposition.
+- **Panel traversal:** Group rows into panels of height h s.t. all Q-blocks touched by a panel fit in C'. Process panel-by-panel. Exactly SpMM tiling.
+- **Row/column symmetry explicit** — doesn't privilege either relation (unlike pinned-D in C). Optimal may pin Q, pin D, or alternate.
+- Panel height = cache allocation: h · s_D + idx(s_D) vs. C' budget for Q-blocks within each panel.
+- **Novel twist vs. standard SpMM tiling:** we *choose* the sparsity pattern by choosing m, n. Problem = design a sparse matrix (via partitioning) cheapest to traverse under cache budget C'.
+- Full formulation: min_{m, n, Π, σ} s_D · Σᵢ loads(D_i | Π, σ) + s_Q · Σⱼ loads(Q_j | Π, σ), where Π = panel decomposition, σ = row/col permutation, J(m,n) = join matrix from partitioning, subject to s_D + idx(s_D) + 2·s_Q + R ≤ C, recall(m,n) ≥ τ.
+- Subsumes B and C: B is the edge ordering view; C is the continuous relaxation with ρ_Q absorbing panel structure.
+- **Connections:** Hong & Kung red-blue pebble game (1981) gives I/O lower bounds for matrix computations under cache constraints → potential theoretical contribution. Sparse matrix reordering (RCM, METIS) directly applicable.
+
+#### 2.2 Block-Pair Comparison Using Indices
+Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses a two-level index structure to prune and execute the comparison entirely on GPU.
+
+**Coarse-level pruning (before data load):**
+- If `dist(c_Di, c_Qj) - r_Di - r_Qj > threshold`, the entire coarse pair is skipped **before any data is loaded**. Evaluated on CPU using only coarse centroids (~0.5MB total).
+- Q's coarse partitions use independent clustering with separate centers. No index is built on Q — Q vectors are queries streamed against D's index.
+
+**Per-partition vector index (fine-level search on GPU):**
+- Build a vector index (IVF, CAGRA, IVF-RaBitQ, etc.) within each coarse partition of `D`. The index structure serves as the fine-grained pruning mechanism.
+- E.g., IVF on a ~10M-vector partition → ~3000 IVF clusters as fine-grained units.
+- When a coarse pair (D_i, Q_j) is loaded into VRAM, Q_j's vectors are searched against D_i's index entirely on GPU.
+
+**Index storage strategy:**
+
 | Component | Size (example: 1B vectors, 1000d) | Location |
 |---|---|---|
 | Coarse centroids | ~115 × 1000d ≈ 0.5MB | RAM (always resident) |
 | Per-partition IVF centroids | ~3000 × 1000d ≈ 12MB/partition, ~1.4GB total | RAM; loaded to VRAM per pair |
 | Vector data | ~35GB per partition | Disk; loaded on-demand via DMA |
 
-#### 2.4 Task Ordering and Caching (TBD)
-- DiskJoin uses graph reordering (Gorder-style) to maximize cache reuse and Belady's optimal caching (possible because the full access sequence is predetermined). Both techniques are applicable to our bipartite bucket graph across the RAM and VRAM cache levels.
-- Tagore and Legion provide precedent for multi-tier (disk→RAM→VRAM) caching with cluster-aware eviction.
 
 ### 3. CUDA and GPU Optimization
 Details TBD. Candidate per-partition index implementations: FAISS IVF-PQ, CAGRA (cuVS), IVF-RaBitQ (cuVS). flyKNNG's on-the-fly top-k during distance computation (avoids materializing full distance matrix) is relevant for the GPU kernel design.
@@ -84,21 +132,9 @@ Details TBD. Candidate per-partition index implementations: FAISS IVF-PQ, CAGRA 
 
 ## Notes
 *Notes are any other thoughts, observations, or additional information that is relevant to the project but does not constitute as an "idea" which requires action. This can include things like background, potential challenges, or any other information that is useful for the project. This should be a list of any sizes that can be changed as the project evolves.*
-- **Target scale:** Billions of vectors, ~1000 dimensions, float32 (4KB/vector, ~4TB total). Algorithm should be VRAM-adaptive (flexible partition count based on available GPU memory).
 - **Open question: Disk layout for coarse partitions.** After clustering, should we reorganize data on disk so each coarse partition is stored contiguously (like DiskJoin)? One-time preprocessing cost enables sequential DMA reads. How does this interact with GPUDirect Storage (GDS)?
 - **Open question: Unbalanced partitions.** K-means on real data produces uneven clusters. Oversized partitions may not fit in VRAM with their pair. Options: balanced k-means, post-hoc splitting, or adaptive subdivision at runtime.
 - **Gap in literature:** GPU-accelerated vector *similarity join* at billion scale is essentially unexplored. DiskJoin (SIGMOD 2026) is the only direct predecessor and is CPU-only. Most GPU vector search work focuses on single-query ANN, not all-pairs join. This confirms the novelty of the research direction.
-- **DiskJoin's MECC formalization is novel.** Modeling partition-based join scheduling as a graph edge-covering problem (MECC: Minimum Edge Cover with Cache) appears unique in the literature. No prior join processing work formalizes the scheduling as a caching-constrained edge cover. The joint reordering (Gorder) + optimal caching (Belady) decomposition is also distinctive — prior work studies these components separately.
-- **Alternative join scheduling formalizations for context:**
-  - *Classic approach*: Selinger-style closed-form I/O cost formulas + DP over join orderings (Selinger 1979, Shapiro 1986, Graefe 1993)
-  - *Buffer allocation as optimization*: hot-set model, DP/greedy over buffer page assignment (Sacco & Schkolnick 1986)
-  - *Knapsack formulation*: NOCAP (Zhu et al., VLDB 2023) formalizes hybrid hash join partition-to-memory assignment as a knapsack problem — closest analog to DiskJoin's graph formulation in spirit (combinatorial optimization over which partitions to cache)
-- **Graph-based scheduling in adjacent domains (parallels to MECC):**
-  - *GNN training*: Ginex (VLDB 2022) uses offline Belady's for feature caching, exploiting graph structure for optimal caching — almost identical conceptual insight to DiskJoin. P-OPT (HPCA 2021) does the same for graph analytics.
-  - *Graph reordering for locality*: Gorder (Wei et al., SIGMOD 2016) is the direct ancestor. Coleman et al. (2021) apply graph reordering for cache-efficient ANN graph traversal. Faldu et al. (2020) show even simple reorderings capture most cache benefit.
-  - *Out-of-core graph processing*: GridGraph (ATC 2015), X-Stream (SOSP 2013) partition graph data for cache-friendly streaming — same partition-order-for-locality principle.
-  - *Task scheduling as graph problem*: Sotskov & Mihova (2021) reduce multiprocessor scheduling to graph coloring; He et al. (2016) formalize co-scheduling as graph partitioning for cache sharing.
-  - No existing work uses a TSP/Hamiltonian formulation for join scheduling, despite structural similarities.
 
 
 ## Foundations
@@ -115,8 +151,6 @@ The join formulation also differs structurally from batch ANN search (running |Q
 ANN search on a single vector set underlies the fine-grained search within each partition of a similarity join system. The main indexing paradigms are:
 
 **IVF (Inverted File Index).** Partitions the vector space into Voronoi cells via k-means clustering. At query time, only the closest cell(s) are searched. IVF's effectiveness depends on the number of cells (nlist), the number of cells probed per query (nprobe), and the distribution of vectors across cells. The coarse quantizer (cluster centroids) fits in memory while posting lists (vector subsets) can reside on disk or be loaded on demand. IVF naturally meshes with hierarchical partitioning: coarse partitions define data movement units, and IVF within a partition provides the fine-grained search structure.
-
-**Product Quantization (PQ) and Compressed Representations.** PQ (Jégou, Douze & Schmid, TPAMI 2011) decomposes vectors into subvectors, quantizes each with a small codebook, and approximates distances via precomputed lookup tables (asymmetric distance computation). This compresses each vector to a few bytes, enabling in-memory exhaustive scan of billions of vectors. Combined with IVF, IVF-PQ became the dominant in-memory ANN paradigm and the foundation of FAISS. More recent quantization methods include RaBitQ (Gao & Long, SIGMOD 2024), which uses randomized single-bit encoding with provable error bounds and avoids raw-vector reranking — a significant advantage in memory-constrained settings where storing both codes and raw vectors is expensive.
 
 **Graph-Based Indexes.** HNSW (Malkov & Yashunin, TPAMI 2018) constructs a multi-layer navigable small-world graph where upper layers contain sparse long-range connections for fast coarse navigation, and the bottom layer is a dense proximity graph for precise local search. HNSW achieves high recall with logarithmic search complexity and became the standard in-memory ANN algorithm. Vamana (DiskANN, Subramanya et al., NeurIPS 2019) simplified HNSW to a single-layer bounded-degree graph with a global entry point, enabling SSD-resident storage: the graph structure and PQ-compressed vectors are stored in SSD pages, and search proceeds via asynchronous beam search with I/O. Graph indexes generally offer higher recall at a given throughput compared to IVF methods, but have larger memory footprints (storing adjacency lists) and higher construction costs.
 

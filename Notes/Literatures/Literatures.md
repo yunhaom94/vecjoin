@@ -326,3 +326,75 @@ This document contains a list of literatures that is relevant to this project. E
 - **Summary**: Formalizes job co-scheduling on shared-cache multicore processors as graph partitioning, where vertices are jobs and edge weights encode cache contention. Proposes algorithms for optimal/near-optimal job groupings that minimize shared cache interference.
 - **Relevance**: Example of scheduling as graph partitioning for cache sharing. He et al.'s graph encodes cache contention (conflict avoidance), while DiskJoin's bucket graph encodes cache sharing (locality maximization) — both use graph structure for cache-aware scheduling.
 ---
+
+---
+- **Title**: I/O Complexity: The Red-Blue Pebble Game
+- **Author(s)**: Jia-Wei Hong, H. T. Kung
+- **Year**: 1981
+- **Venue**: STOC 1981
+- **Summary**: Foundational paper formalizing I/O complexity of computations under a two-level memory hierarchy using the red-blue pebble game model. Red pebbles represent fast memory (cache) slots, blue pebbles represent slow memory (disk). Proves the Ω(n³/√M) I/O lower bound for dense matrix multiplication with cache size M. Establishes that data movement, not computation, is the fundamental bottleneck for many algorithms when data exceeds fast memory.
+- **Relevance**: Theoretical foundation for Formulation E (Sparse Join Matrix Traversal). The pebble game directly models our VRAM (red pebbles) vs. disk/RAM (blue pebbles) hierarchy. The I/O lower bound framework can be applied to derive theoretical lower bounds on the data movement cost of our partitioned similarity join under VRAM budget C'. Extensions by Ballard et al. (2013) adapt these bounds to sparse computations, directly applicable to our sparse join matrix J.
+---
+
+---
+- **Title**: Optimizing the Performance of Sparse Matrix-Vector Multiplication (Tiling Optimizations for Sparse Matrix Computations)
+- **Author(s)**: Eun-Jin Im, Katherine Yelick
+- **Year**: 2001
+- **Venue**: International Journal of High Performance Computing Applications (IJHPCA)
+- **Summary**: Introduces cache-aware tiling for sparse matrix operations, specifically row-panel decomposition for SpMM where panel height is chosen so all accessed dense-matrix columns fit in cache. Develops an analytical model for selecting panel height based on cache size and nonzero distribution. Also covers register blocking and cache blocking with automatic block size selection based on matrix structure and hardware parameters.
+- **Relevance**: Directly validates Formulation E's panel decomposition approach. Their row-panel tiling for SpMM — where panel height controls cache occupancy of column data — is structurally identical to our panel traversal of the join matrix J, where panel height controls how many Q-blocks must be cached in VRAM. Their analytical model for panel height selection based on nonzero distribution informs our panel sizing under VRAM budget C'.
+---
+
+---
+- **Title**: Communication Optimal Parallel Multiplication of Sparse Random Matrices
+- **Author(s)**: Grey Ballard, Aydin Buluc, James Demmel, Laura Grigori, Benjamin Lipshitz, Oded Schwartz, Sivan Toledo
+- **Year**: 2013
+- **Venue**: SPAA 2013 (ACM Symposium on Parallelism in Algorithms and Architectures)
+- **Summary**: Extends Hong-Kung I/O lower bounds to sparse matrix-matrix multiplication (SpMM). Proves that for sparse matrices, the I/O lower bound depends on the sparsity structure (nonzero pattern), not just the total nonzero count. Shows that for Erdos-Renyi random sparse matrices, 1D and 2D decompositions are communication-optimal under certain density conditions. Establishes that sparse I/O complexity is fundamentally determined by the interaction between sparsity pattern and cache/memory hierarchy.
+- **Relevance**: Key theoretical reference for Formulation E. Proves that the I/O cost of traversing our sparse join matrix J depends on J's specific nonzero pattern — which we control by choosing partition counts (m, n). This means our choice of (m, n) affects not just the number of nonzeros (surviving pairs) but the I/O complexity of processing them. Their lower bounds could yield a theoretical contribution: proving that our panel-based traversal is near-optimal for the join matrix's sparsity structure.
+---
+
+---
+- **Title**: Hypergraph Partitioning for Sparse Matrix-Matrix Multiplication
+- **Author(s)**: Grey Ballard, Alex Druinsky, Nicholas Knight, Oded Schwartz
+- **Year**: 2015
+- **Venue**: ACM Transactions on Parallel Computing (TOPC)
+- **Summary**: Shows that minimizing communication (data movement) in SpMM is equivalent to hypergraph partitioning. Each nonzero entry contributes to hyperedges capturing data reuse patterns. Standard hypergraph partitioning tools (PaToH, Zoltan) can produce SpMM schedules with significantly less communication than naive 1D/2D decompositions. Demonstrates that hypergraph models capture reuse structure missed by simpler graph-based partitioning.
+- **Relevance**: Directly maps to our scheduling problem. The hypergraph model for SpMM data reuse is equivalent to modeling Q-block reuse across D-partition groups in our join: each Q-block is a hyperedge connecting all D-partitions that access it. Hypergraph partitioning tools (PaToH, hMETIS) could be applied directly to our join matrix J to find near-optimal panel decompositions. This provides a concrete algorithmic alternative to Gorder-style greedy reordering.
+---
+
+---
+- **Title**: Track Join: Distributed Joins with Minimal Network Traffic
+- **Author(s)**: Orestis Polychroniou, Rajkumar Sen, Kenneth A. Ross
+- **Year**: 2014
+- **Venue**: SIGMOD 2014
+- **Summary**: Introduces Track Join, a distributed join algorithm that explicitly constructs a sparse matrix of partition-pair interactions (the "tracking matrix") to minimize network data transfer. The tracking matrix records which partitions of the probe relation are needed by each partition of the build relation. By analyzing this matrix, Track Join transfers only the necessary data, achieving minimal network traffic for distributed hash joins.
+- **Relevance**: Closest database analog to Formulation E. Track Join's tracking matrix is structurally identical to our join matrix J[m,n] — both are sparse binary matrices where nonzeros indicate which partition pairs need processing. The key difference: Track Join treats the tracking matrix as given by the data and optimizes data movement based on it, while our Formulation E co-optimizes the matrix structure (via m, n) and traversal schedule. Track Join validates the "sparse matrix view of partitioned joins" abstraction in the database community.
+---
+
+---
+- **Title**: Optimizing Main-Memory Join on Modern Hardware
+- **Author(s)**: Stefan Manegold, Peter Boncz, Martin Kersten
+- **Year**: 2002
+- **Venue**: IEEE Transactions on Knowledge and Data Engineering (TKDE)
+- **Summary**: Develops a detailed analytical cost model for radix-partitioned hash joins on modern hardware, where partition count is the key tuning parameter. The cost model accounts for cache line sizes, TLB effects, and multi-level memory hierarchy. Shows that the optimal partition count depends on the hardware cache hierarchy and derives it analytically. The cost model has the form: total_cost = f(num_partitions) = partition_cost(p) + probe_cost(p), where p controls cache behavior during probing.
+- **Relevance**: Closest methodological analog to Formulation C's joint optimization over (m, n). Their analytical cost model parameterized by partition count, optimized against the hardware memory hierarchy, is structurally identical to our T(m,n) = |D| + ρ_Q(m,n,C') · |Q| optimized against VRAM budget. Their finding that optimal partition count is hardware-dependent (cache size determines the sweet spot) parallels our VRAM-adaptive partitioning where optimal (m, n) depends on available VRAM C.
+---
+
+---
+- **Title**: Dostoevsky: Better Space-Time Trade-Offs for LSM-Tree Based Key-Value Stores via Adaptive Removal of Superfluous Merging
+- **Author(s)**: Niv Dayan, Stratos Idreos
+- **Year**: 2018
+- **Venue**: SIGMOD 2018
+- **Summary**: Introduces Lazy Leveling, a hybrid merge policy for LSM-trees that interpolates between leveling and tiering to optimize the read/write/space amplification tradeoff. Key methodology: parameterizes the merge policy with continuous variables (size ratios, tiering fractions per level) and uses calculus to find the optimal configuration that minimizes a weighted cost function including I/O amplification. Achieves Pareto-optimal tradeoffs across the full read/write/space spectrum.
+- **Relevance**: Methodological precedent for Formulation C's continuous relaxation approach. Dostoevsky parameterizes a discrete design space (merge policies) with continuous variables and optimizes an I/O amplification cost function — structurally identical to our approach of parameterizing partition counts (m, n) and optimizing T(m,n) = |D| + ρ_Q · |Q|. Citing this as a methodological analog strengthens the positioning of Formulation C as a principled approach rather than ad-hoc tuning.
+---
+
+---
+- **Title**: Evaluation Techniques for Storage Hierarchies
+- **Author(s)**: R. L. Mattson, J. Gecsei, D. R. Slutz, I. L. Traiger
+- **Year**: 1970
+- **Venue**: IBM Systems Journal, Vol. 9, No. 2
+- **Summary**: Introduces stack distance (reuse distance) analysis — the foundational theory for characterizing cache behavior with a scalar. Defines the inclusion property: if a reference hits in a cache of size M, it also hits in any cache of size M' > M. This enables computing the miss rate as a monotone function of cache size from a single pass over the access trace. The stack distance distribution fully determines cache performance for all LRU-family replacement policies.
+- **Relevance**: Theoretical foundation for Formulation C's ρ_Q as a function of C'. The inclusion function (miss rate vs. cache size) is exactly the relationship between our reuse factor ρ_Q and effective cache budget C'. Stack distance theory justifies collapsing schedule-dependent cache behavior into a scalar: given the access trace (determined by σ), ρ_Q(C') is a well-defined monotone function. This provides the theoretical grounding for the empirical estimation approach — sample the access trace on learning data, compute the stack distance distribution, and predict ρ_Q for any C'.
+---
