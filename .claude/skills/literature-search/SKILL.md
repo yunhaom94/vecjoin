@@ -5,7 +5,6 @@ description: >
   for a given research topic. Searches academic databases via APIs, filters candidates by
   title/abstract relevance, obtains full texts for deeper checks, converts papers to Markdown
   via markitdown for analysis and storage, and writes structured summaries. This skill can be invoked as a sub-agent by the thinkidea skill.
-context: fork
 ---
 
 # Literature Search
@@ -37,9 +36,7 @@ Return summary report to calling agent  ← as text in your response, not as a f
 
 ## CRITICAL: Temp File Discipline
 
-The previous version of this skill caused agents to dump dozens of intermediate files (JSON
-search results, ad-hoc Python scripts, intermediate Markdown reports) into the project root.
-This is unacceptable. Follow these rules strictly:
+Carefully manage temporary files. Follow these rules strictly:
 
 1. **Use `{project_root}/.tmp/` for all temporary files.** Create this directory at the start
    of the search. All intermediate files (downloaded PDFs, etc.) go here — never in the
@@ -53,14 +50,21 @@ This is unacceptable. Follow these rules strictly:
    read it from the terminal output. Filter and rank papers in your context window. Do not
    save search results or intermediate JSON to disk.
 
-4. **Never write ad-hoc Python scripts.** The bundled scripts handle search and download.
-   If you need to process data, do it by reasoning in your context, not by writing and
-   running throwaway scripts.
-
-5. **Your summary report is returned as text** in your response message to the calling agent.
+4. **Your summary report is returned as text** in your response message to the calling agent.
    Do not create a Markdown file for the report.
 
 The only permanent files this skill creates are in `Notes/Literatures/`.
+
+## Critical: Expected Permanent Outputs
+
+Every successful run of this skill MUST produce these outputs before returning:
+
+1. **Markdown files** in `Notes/Literatures/<title>.md` — one per relevant paper with available PDF
+2. **Updated `Literatures.md`** — summary entries appended for every paper added
+3. **Text summary** returned to the calling agent listing what was found and saved
+
+If you reach the Output phase without having saved any `.md` files or updated `Literatures.md`,
+go back and complete Phase 3. The calling agent relies on these files being present on disk.
 
 ## Phase 0: Search Academic Databases
 
@@ -74,8 +78,7 @@ python "<skill-dir>/scripts/search_papers.py" \
 ```
 
 The script searches both Semantic Scholar and arXiv for each query, deduplicates across all
-results, and prints a unified JSON array to stdout. Parse the JSON from the terminal output
-directly — do not redirect to a file.
+results, and prints a unified JSON array to stdout. 
 
 If the `scholarly` Python package is available, you can also search Google Scholar as a bonus:
 ```bash
@@ -135,13 +138,8 @@ Target ~5-15 papers after this phase.
 ### 3a. Ensure the output directory and file exist
 
 Check if `{project_root}/Notes/Literatures/` exists. If not, create it.
-Check if `{project_root}/Notes/Literatures/Literatures.md` exists. If not, create it with
-this header:
-
-```markdown
-# Literatures
-This document contains a list of literatures that is relevant to this project. Each literature is formatted in the following way, and each literature is separated by a horizontal line (---). The ./Notes/Literatures/ folder contains the full text of the literatures listed in this file in Markdown format, with name format "{title}.md".
-```
+Check if `{project_root}/Notes/Literatures/Literatures.md` exists. If not, copy it from
+the thinkidea skill's template at `skills/thinkidea/templates/Literatures/Literatures.md`.
 
 ### 3b. Check for duplicates
 
@@ -191,12 +189,26 @@ For each relevant paper, append an entry to the end of Literatures.md in this ex
 - **Year**: {publication year}
 - **Venue**: {journal, conference, or "arXiv preprint"}
 - **Summary**: {2-4 sentence summary covering main ideas, methodology, key findings}
-- **Relevance**: {1-2 sentence explanation of how this paper relates to the research topic}
+- **Relevance**:
 ---
 ```
 
+Leave the **Relevance** field blank. The calling agent will fill it in after discussing each
+paper's relevance with the user, since that judgment requires project-specific context that
+the search subagent doesn't have.
+
 If the full text was unavailable, add a note at the end of the Summary:
 `(Note: Full text was not available for download and conversion.)`
+
+### 3e. Verify storage before proceeding
+
+Before moving to the Output phase, verify that your work was actually persisted:
+
+1. List `Notes/Literatures/` and confirm the new `.md` files exist
+2. Read the tail of `Literatures.md` and confirm the new entries were appended
+
+If either check fails, go back and fix it. Do not return results to the calling agent until
+the files are confirmed on disk.
 
 ## Output
 
@@ -226,9 +238,6 @@ a file for this report.
 ```
 
 ## Important Notes
-
-- **No workspace pollution.** The only permanent files this skill creates are in
-  `Notes/Literatures/`. Temp files go in `{project_root}/.tmp/` and must be deleted when done.
 - **Rate limiting**: Add 1-second delays between API calls to avoid being blocked. The
   bundled scripts handle this for the initial search, but be mindful when making additional
   API calls (e.g., Unpaywall lookups).

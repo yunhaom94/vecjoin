@@ -14,6 +14,7 @@ import json
 import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -34,6 +35,32 @@ def titles_match(t1: str, t2: str, threshold: float = 0.85) -> bool:
     return SequenceMatcher(None, n1, n2).ratio() >= threshold
 
 
+def api_request_with_retry(url: str, max_retries: int = 4, base_delay: float = 2.0) -> dict | None:
+    """Make an API request with exponential backoff on rate limit (429) and server errors (5xx)."""
+    for attempt in range(max_retries + 1):
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'LiteratureSearch/1.0'})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read().decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            if e.code == 429 or e.code >= 500:
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"[WARN] HTTP {e.code}, retrying in {delay:.0f}s (attempt {attempt+1}/{max_retries})", file=sys.stderr)
+                    time.sleep(delay)
+                    continue
+                else:
+                    print(f"[WARN] HTTP {e.code} after {max_retries} retries, giving up", file=sys.stderr)
+                    return None
+            else:
+                print(f"[WARN] HTTP {e.code}: {e.reason}", file=sys.stderr)
+                return None
+        except Exception as e:
+            print(f"[WARN] Request failed: {e}", file=sys.stderr)
+            return None
+    return None
+
+
 def search_semantic_scholar(query: str, max_results: int = 50) -> list:
     """Search Semantic Scholar API for papers."""
     papers = []
@@ -50,55 +77,47 @@ def search_semantic_scholar(query: str, max_results: int = 50) -> list:
         })
         url = f"https://api.semanticscholar.org/graph/v1/paper/search?{params}"
 
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'LiteratureSearch/1.0'})
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode('utf-8'))
-
-            if not data.get('data'):
-                break
-
-            for item in data['data']:
-                authors = []
-                for a in (item.get('authors') or []):
-                    if a.get('name'):
-                        authors.append(a['name'])
-
-                doi = None
-                arxiv_id = None
-                ext_ids = item.get('externalIds') or {}
-                if ext_ids.get('DOI'):
-                    doi = ext_ids['DOI']
-                if ext_ids.get('ArXiv'):
-                    arxiv_id = ext_ids['ArXiv']
-
-                pdf_url = None
-                oap = item.get('openAccessPdf')
-                if oap and oap.get('url'):
-                    pdf_url = oap['url']
-
-                papers.append({
-                    'title': item.get('title', ''),
-                    'abstract': item.get('abstract', ''),
-                    'year': item.get('year'),
-                    'authors': authors,
-                    'venue': item.get('venue', ''),
-                    'doi': doi,
-                    'arxiv_id': arxiv_id,
-                    'pdf_url': pdf_url,
-                    'url': item.get('url', ''),
-                    'source': 'semantic_scholar'
-                })
-
-            offset += batch_size
-            if offset >= data.get('total', 0):
-                break
-
-            time.sleep(1)  # Rate limiting
-
-        except Exception as e:
-            print(f"[WARN] Semantic Scholar search failed: {e}", file=sys.stderr)
+        data = api_request_with_retry(url)
+        if data is None or not data.get('data'):
             break
+
+        for item in data['data']:
+            authors = []
+            for a in (item.get('authors') or []):
+                if a.get('name'):
+                    authors.append(a['name'])
+
+            doi = None
+            arxiv_id = None
+            ext_ids = item.get('externalIds') or {}
+            if ext_ids.get('DOI'):
+                doi = ext_ids['DOI']
+            if ext_ids.get('ArXiv'):
+                arxiv_id = ext_ids['ArXiv']
+
+            pdf_url = None
+            oap = item.get('openAccessPdf')
+            if oap and oap.get('url'):
+                pdf_url = oap['url']
+
+            papers.append({
+                'title': item.get('title', ''),
+                'abstract': item.get('abstract', ''),
+                'year': item.get('year'),
+                'authors': authors,
+                'venue': item.get('venue', ''),
+                'doi': doi,
+                'arxiv_id': arxiv_id,
+                'pdf_url': pdf_url,
+                'url': item.get('url', ''),
+                'source': 'semantic_scholar'
+            })
+
+        offset += batch_size
+        if offset >= data.get('total', 0):
+            break
+
+        time.sleep(3)  # Rate limiting between pagination requests
 
     return papers[:max_results]
 
@@ -251,14 +270,14 @@ def main():
 
     for qi, query in enumerate(queries):
         if qi > 0:
-            time.sleep(1)  # Rate limiting between queries
+            time.sleep(3)  # Rate limiting between queries
 
         if 'semantic_scholar' in sources:
             print(f"[INFO] [{qi+1}/{len(queries)}] Searching Semantic Scholar for: {query}", file=sys.stderr)
             ss_papers = search_semantic_scholar(query, args.max_results)
             print(f"[INFO] Found {len(ss_papers)} results from Semantic Scholar", file=sys.stderr)
             all_papers.extend(ss_papers)
-            time.sleep(1)
+            time.sleep(3)
 
         if 'arxiv' in sources:
             print(f"[INFO] [{qi+1}/{len(queries)}] Searching arXiv for: {query}", file=sys.stderr)

@@ -113,15 +113,45 @@ Use your own knowledge first; search to verify or when the user specifically wan
 what's out there. For foundational research (new problem space), lean more heavily on lit search.
 For incremental research (refining a known design), search mainly for specific claims or techniques.
 
-Example invocation via the Agent tool:
+#### Invoking the search subagent
+
+Spawn a subagent via the Agent tool. The subagent must use the `literature-search` skill and
+complete its full pipeline, including the storage phase. Be explicit in the prompt — the subagent
+should:
+1. Search and filter papers (Phases 0-2 of the skill)
+2. Download PDFs, convert to Markdown, and save to `Notes/Literatures/<title>.md`
+3. Append summary entries to `Notes/Literatures/Literatures.md`
+4. Return a text summary listing what was found and saved
+
+Example invocation prompt:
 ```
-Search for related work on the following topic:
-  Topic: {summary of the research area}
-  Problem: {the specific question}
-  Project root: {project root path}
+Use the `literature-search` skill to find related work. You MUST complete the full pipeline
+including Phase 3 (storage): save each paper's Markdown conversion to Notes/Literatures/
+and append summary entries to Literatures.md. Verify the files exist before returning.
+
+Topic: {summary of the research area}
+Problem: {the specific question}
+Project root: {project root path}
+Skill path: {path to .claude/skills/literature-search}
 ```
 
-After results come back, discuss relevance with the user. Update `Literatures.md` accordingly.
+#### Post-search review with user
+
+After the subagent returns, present the list of papers it added to `Notes/Literatures/` and
+discuss with the user:
+- Which papers are genuinely relevant and worth keeping
+- Which are tangential, low-quality, or redundant with existing literature
+
+For papers the user wants to keep:
+- Write the **Relevance** field in their `Literatures.md` entry based on the discussion
+  (the search subagent leaves this blank because it lacks project context)
+
+For papers the user wants to remove:
+- Delete the `.md` file from `Notes/Literatures/`
+- Remove the corresponding entry from `Literatures.md`
+
+This curation step keeps the collection focused. Don't skip it — the search subagent casts a
+wide net on purpose, and the user's judgment on what belongs is essential.
 
 ### Record
 
