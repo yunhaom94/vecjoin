@@ -1,6 +1,9 @@
 # Ideas
 This document contains the ideas and notes for the project.
 
+## Project Name
+GPU-AVSJ
+
 ## Piloting Idea
 *Piloting idea is a single short paragraph that describes the initial idea for the project, could be big could also be small. This should not be changed.*
 

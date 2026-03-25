@@ -399,3 +399,5 @@ Testing/
 
 .venv/
 Notes/Literatures/*.pdf
+
+__pycache__
