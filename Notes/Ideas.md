@@ -139,7 +139,8 @@ Details TBD. Candidate per-partition index implementations: FAISS IVF-PQ, CAGRA 
 - **Open question: Unbalanced partitions.** K-means on real data produces uneven clusters. Oversized partitions may not fit in VRAM with their pair. Options: balanced k-means, post-hoc splitting, or adaptive subdivision at runtime.
 - **Gap in literature:** GPU-accelerated vector *similarity join* at billion scale is essentially unexplored. DiskJoin (SIGMOD 2026) is the only direct predecessor and is CPU-only. Most GPU vector search work focuses on single-query ANN, not all-pairs join. This confirms the novelty of the research direction.
 - **Related Work Note (SimJoin):** SimJoin (SIGMOD 2025) is not good for GPU because the spanning-tree-based join window sliding for sequential search.
-
+- Find optimal block size
+ 
 
 ## Foundations
 *Any background of this project, including related work, previous research, or any other information that is relevant to the project. It should not be a list of literatures, but a summary of key concepts, background, SOTA solution patterns and remaining gaps in the literature that are relevant to the project.*
