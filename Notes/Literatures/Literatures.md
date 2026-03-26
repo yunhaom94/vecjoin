@@ -398,3 +398,12 @@ This document contains a list of literatures that is relevant to this project. E
 - **Summary**: Introduces stack distance (reuse distance) analysis — the foundational theory for characterizing cache behavior with a scalar. Defines the inclusion property: if a reference hits in a cache of size M, it also hits in any cache of size M' > M. This enables computing the miss rate as a monotone function of cache size from a single pass over the access trace. The stack distance distribution fully determines cache performance for all LRU-family replacement policies.
 - **Relevance**: Theoretical foundation for Formulation C's ρ_Q as a function of C'. The inclusion function (miss rate vs. cache size) is exactly the relationship between our reuse factor ρ_Q and effective cache budget C'. Stack distance theory justifies collapsing schedule-dependent cache behavior into a scalar: given the access trace (determined by σ), ρ_Q(C') is a well-defined monotone function. This provides the theoretical grounding for the empirical estimation approach — sample the access trace on learning data, compute the stack distance distribution, and predict ρ_Q for any C'.
 ---
+
+---
+- **Title**: Fast Approximate Similarity Join in Vector Databases
+- **Author(s)**: Jiadong Xie, Jeffrey Xu Yu, Yingfan Liu
+- **Year**: 2025
+- **Venue**: Proc. ACM Manag. Data 3, 3 (SIGMOD), Article 158 (June 2025)
+- **Summary**: Proposes SimJoin, a new approximate ε-similarity join algorithm that departs from selection-based approaches (which treat each query point as an independent range query). Two core contributions: (1) *join window sliding* — reuses join results of processed points by sliding along an adjacent graph (approximated by a proximity graph like NSG) over Y, exploiting overlap between consecutive join windows; (2) *join window order selection* — optimizes the processing order of X points via MST on an ε-neighbor graph over X ∪ {y₀}, minimizing total sliding cost. Achieves 10x+ speedup over VBase and XJoin at 0.99+ recall on datasets up to 11M vectors (single-threaded CPU). Also extends to k-similarity join and proximity graph index maintenance via join window sliding.
+- **Relevance**: Within bucket join computation optmize, direclty compete to our index x clustering based solution. But it is CPU only. And probably will not work for GPU.
+---

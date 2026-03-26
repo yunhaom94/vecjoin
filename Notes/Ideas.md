@@ -138,6 +138,7 @@ Details TBD. Candidate per-partition index implementations: FAISS IVF-PQ, CAGRA 
 - **Open question: Disk layout for coarse partitions.** After clustering, should we reorganize data on disk so each coarse partition is stored contiguously (like DiskJoin)? One-time preprocessing cost enables sequential DMA reads. How does this interact with GPUDirect Storage (GDS)?
 - **Open question: Unbalanced partitions.** K-means on real data produces uneven clusters. Oversized partitions may not fit in VRAM with their pair. Options: balanced k-means, post-hoc splitting, or adaptive subdivision at runtime.
 - **Gap in literature:** GPU-accelerated vector *similarity join* at billion scale is essentially unexplored. DiskJoin (SIGMOD 2026) is the only direct predecessor and is CPU-only. Most GPU vector search work focuses on single-query ANN, not all-pairs join. This confirms the novelty of the research direction.
+- **Related Work Note (SimJoin):** SimJoin (SIGMOD 2025) is not good for GPU because the spanning-tree-based join window sliding for sequential search.
 
 
 ## Foundations
