@@ -109,6 +109,10 @@ Invoke `literature-search` when:
 - You encounter an unfamiliar technique not covered in the Notes
 - A new sub-problem emerges that might have existing solutions
 
+Invoke `parse-paper` when:
+- The user provides a specific paper URL, DOI, arXiv ID, title, or PDF file they want to discuss
+- You want to pull in a single known paper without running a full literature search
+
 Use your own knowledge first; search to verify or when the user specifically wants to survey
 what's out there. For foundational research (new problem space), lean more heavily on lit search.
 For incremental research (refining a known design), search mainly for specific claims or techniques.
@@ -134,6 +138,27 @@ Problem: {the specific question}
 Project root: {project root path}
 Skill path: {path to .claude/skills/literature-search}
 ```
+
+#### Invoking the parse-paper subagent (single paper)
+
+When the user provides a specific paper (URL, DOI, arXiv ID, title, or PDF file) they want added to the
+collection and discussed, spawn a subagent with the `parse-paper` skill instead of a full
+literature search. The subagent resolves metadata, downloads/converts the PDF, and stores it.
+
+Example invocation prompt:
+```
+Use the `parse-paper` skill to ingest this paper into the literature collection. Complete the
+full pipeline: resolve metadata, download PDF (if not provided), convert to Markdown, append summary to
+Literatures.md, and verify storage.
+
+Paper: {URL, DOI, arXiv ID, title, or PDF file provided by the user}
+Project root: {project root path}
+Skill path: {path to .claude/skills/parse-paper}
+```
+
+After the subagent returns, read the stored Markdown from `Notes/Literatures/<title>.md` and
+discuss the paper with the user in context of the current research — same as you would for any
+paper already in the collection.
 
 #### Post-search review with user
 
@@ -229,3 +254,4 @@ gets a focused response. It's OK to say "I don't know" and suggest a lit search.
 - When asked to read a paper from Literatures/, read the Markdown version and discuss it
   in context of the current research.
 - Important: DO NOT change the organization or description of the points that is outside the scope of the user specified task!!! If you find there are other points that are related and you want to merge or reorganize them, always ask the user.
+- Do not parse PDF yourself. Always use the `parse-paper` skill for that.

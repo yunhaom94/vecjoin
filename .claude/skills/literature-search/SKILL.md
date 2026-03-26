@@ -122,7 +122,8 @@ For each paper that passed Phase 1, attempt to obtain the full text:
 3. **Try arXiv** if the paper has an arXiv ID but wasn't found via arXiv search
 
 For papers where you can obtain the PDF:
-- Download to the system temp directory (see Phase 3c for exact commands)
+- Download to `{project_root}/.tmp/` using the `parse-paper` skill's download script:
+  `python "<skill-dir>/../parse-paper/scripts/download_pdf.py" --url "<pdf_url>" --output "{project_root}/.tmp/<filename>.pdf"`
 - Convert to Markdown using `markitdown` for analysis
 - Skim introduction, methodology, and conclusion to assess relevance
 - Determine if the paper is truly relevant to the specific problem
@@ -146,69 +147,36 @@ the thinkidea skill's template at `skills/thinkidea/templates/Literatures/Litera
 Before adding a paper, read the existing Literatures.md to check if the paper is already
 listed (match by title). Skip any paper that's already there.
 
-### 3c. Download, convert to Markdown, and clean up
+### 3c. Process each paper via the `parse-paper` skill
 
-For each relevant paper with an available PDF URL:
+For each relevant paper passing Phase 2, follow the `parse-paper` skill's pipeline
+(Steps 3–6) to download the PDF, convert to Markdown, append a summary entry to
+Literatures.md, and verify storage. Read the skill at
+`{skill-dir}/../parse-paper/SKILL.md` for the detailed per-paper instructions.
 
-1. Ensure the temp directory exists:
-   ```bash
-   mkdir -p "{project_root}/.tmp"
-   ```
+Since metadata and PDF URLs are already resolved from Phases 1–2, pass the full paper
+info (title, authors, year, venue, abstract, PDF URL) to skip Steps 1–2 of parse-paper
+and go straight to Step 3 (Download PDF).
 
-2. Download the PDF to the project temp directory:
-   ```bash
-   python "<skill-dir>/scripts/download_pdf.py" --url "<pdf_url>" --output "{project_root}/.tmp/<sanitized_title>.pdf"
-   ```
-
-3. Convert the PDF to Markdown using `markitdown` — output goes to the project Literatures dir:
-   ```bash
-   markitdown "{project_root}/.tmp/<sanitized_title>.pdf" -o "{project_root}/Notes/Literatures/<sanitized_title>.md"
-   ```
-   If `markitdown` is not installed, install it first: `pip install 'markitdown[pdf]'`.
-
-4. After **all** papers are processed, delete the entire temp directory:
-   ```powershell
-   Remove-Item "{project_root}/.tmp" -Recurse -Force
-   ```
-   ```bash
-   rm -rf "{project_root}/.tmp"
-   ```
-
-The title should be sanitized for use as a filename (remove special characters, truncate
-if very long). The download script handles retries and validates the file is actually a PDF
-before conversion.
-
-### 3d. Append summaries to Literatures.md
-
-For each relevant paper, append an entry to the end of Literatures.md in this exact format:
-
+Use `{project_root}/.tmp/` as the temp directory for all downloads. The parse-paper
+skill will leave `.tmp/` cleanup to the caller during bulk processing — after **all**
+papers are processed, delete the entire temp directory:
+```powershell
+Remove-Item "{project_root}/.tmp" -Recurse -Force
 ```
----
-- **Title**: {paper title}
-- **Author(s)**: {comma-separated author names}
-- **Year**: {publication year}
-- **Venue**: {journal, conference, or "arXiv preprint"}
-- **Summary**: {2-4 sentence summary covering main ideas, methodology, key findings}
-- **Relevance**:
----
+```bash
+rm -rf "{project_root}/.tmp"
 ```
 
-Leave the **Relevance** field blank. The calling agent will fill it in after discussing each
-paper's relevance with the user, since that judgment requires project-specific context that
-the search subagent doesn't have.
+### 3d. Verify bulk storage
 
-If the full text was unavailable, add a note at the end of the Summary:
-`(Note: Full text was not available for download and conversion.)`
-
-### 3e. Verify storage before proceeding
-
-Before moving to the Output phase, verify that your work was actually persisted:
+After all papers are processed, verify the full batch was persisted:
 
 1. List `Notes/Literatures/` and confirm the new `.md` files exist
 2. Read the tail of `Literatures.md` and confirm the new entries were appended
 
-If either check fails, go back and fix it. Do not return results to the calling agent until
-the files are confirmed on disk.
+If any paper is missing, go back and reprocess it. Do not return results to the calling
+agent until all files are confirmed on disk.
 
 ## Output
 
