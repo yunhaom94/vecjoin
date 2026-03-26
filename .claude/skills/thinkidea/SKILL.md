@@ -143,7 +143,7 @@ Skill path: {path to .claude/skills/literature-search}
 
 When the user provides a specific paper (URL, DOI, arXiv ID, title, or PDF file) they want added to the
 collection and discussed, spawn a subagent with the `parse-paper` skill instead of a full
-literature search. The subagent resolves metadata, downloads/converts the PDF, and stores it.
+literature search. The subagent resolves metadata, downloads/converts the PDF, and stores it. Remind user to not embed the PDF in the prompt — they should provide a path to the file, do not parse the PDF yourself.
 
 Example invocation prompt:
 ```
