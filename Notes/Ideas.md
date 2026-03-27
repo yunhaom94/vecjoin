@@ -31,39 +31,17 @@ This unifies the index-based search and data scheduling into a single design —
 - Partitions are units of DMA transfer between disk/RAM/VRAM, sized so that a partition pair fits in VRAM with room for double-buffering.
 - **VRAM-adaptive:** Partition count is determined by available VRAM. The algorithm adapts to different GPU memory sizes (e.g., 80GB A100 → ~115 partitions; 12GB consumer GPU → more partitions, same algorithm).
 
-**Variables:**
-- m, n: partition counts for D and Q
-- s_D = |D|/m, s_Q = |Q|/n: block sizes
-- σ: schedule (ordering of block pairs)
-- E(m,n): surviving edges after coarse pruning
-- C: VRAM capacity, B: bandwidth, L: per-transfer latency
-- t_comp(s_D, s_Q): GPU compute time per pair
-- R: result buffer size, idx(s_D): index size per D-block
-
 **VRAM constraints:**
 - s_D + idx(s_D) + 2·s_Q + R ≤ C  (VRAM feasibility, double-buffered Q)
 - C' = C - s_D - idx(s_D) - R  (effective cache budget for Q blocks)
 - recall(m, n) ≥ τ  (accuracy)
 
-**Unified Objective — Pipelined Join Time:**
-- `min_{m, n, σ}  Σᵢ [(s_D + idx(s_D))/B + L]  +  Σ_k max(t_comp(s_D, s_Q), t_xfer(k | σ, C'))`
-- First term: m D-block transition bubbles (unavoidable pipeline stalls)
-- Second term: pipelined pair processing; t_xfer = 0 if Q cached, s_Q/B + L if miss
-
-**Key tradeoff triangle:**
+**Key Optimization parameter:**
 - More partitions → tighter pruning (fewer edges) but more blocks to schedule, also more compute because within each partition pair, the index is smaller → less pruning → more GPU compute time
 - Fewer partitions → less scheduling overhead but coarser pruning (more wasted I/O)
 - Cache capacity C determines reuse potential — more blocks fitting → more reuse
+- With double buffering, the most optimal is when the block size where compute time ≈ transfer time, so that the GPU is fully utilized while data is being transferred.
 
-**Partition size tradeoff — transfer volume vs. transfer count:**
-- Fewer coarse partitions → fewer DMA transfers (less latency overhead), but coarser pruning → more wasted data loaded.
-- More coarse partitions → tighter pruning, less total data transferred, but more DMA transfers with higher per-transfer latency overhead.
-- PCIe 4.0/5.0: latency ~5-10μs, bandwidth ~25-64 GB/s. Crossover at ~0.5-1 MB — coarse partitions should be well above this.
-
-**Two regimes determined by t_comp vs. s_Q/B + L:**
-- Compute-bound (t_comp > s_Q/B + L): I/O hidden, T ≈ |E| × t_comp. Schedule irrelevant. Optimize by reducing |E| × t_comp.
-- I/O-bound (t_comp < s_Q/B + L): GPU idles, T ≈ total_data_transferred / B. Schedule critical. Formulations B/C/E apply.
-- Crossover at critical s_D* where α(s_D) = 1/B (for IVF: compute sublinear in s_D, transfer linear in s_Q). Optimal design sits near crossover.
 
 #### 2.1 Block Scheduling
 The idea: nested loop-join, but only partial pairs are compared. We need to find the most optimal order to schedule the block pairs to be loaded in to the VRAM.
@@ -72,30 +50,10 @@ The idea: nested loop-join, but only partial pairs are compared. We need to find
 Each formulation below models a different approach to optimizing the schedule σ in the unified objective. All share the VRAM constraint (s_D + idx(s_D) + 2·s_Q + R ≤ C) and effective cache budget C' = C - s_D - idx(s_D) - R for Q-block reuse.
 
 **Formulation B — Bipartite Edge Traversal with Cache (Combinatorial):**
-- Two-stage: (1) choose m, n → determines G(m,n), block sizes s_D, s_Q, and cache budget C'; (2) find edge ordering σ minimizing Q-block cache misses under Belady's
-- Stage 2: Minimum Fetches Bipartite Edge Ordering — min_σ |{Q-block cache misses}|, subject to ⌊C'/s_Q⌋ cached Q-blocks
-- Stage 1: grid-search m, n to minimize Stage 2 cost, subject to s_D + idx(s_D) + 2·s_Q + R ≤ C and recall(m,n) ≥ τ
-- NP-hard (Stage 2) → use heuristic (Gorder-style, greedy), grid-search Stage 1
-- Clean separation, bipartite structure exploitable. Weakness: two-stage misses interactions; optimal (m,n) depends on Stage 2 heuristic
 
-**Formulation C — Continuous Relaxation with Reuse Factor (Hybrid):**
-- Total I/O volume: T(m, n) = ρ_D · |D| + ρ_Q · |Q|, where ρ is avg load count per block
-- Pinned-D model: ρ_D = 1; ρ_Q = f(σ, ⌊C'/s_Q⌋), captures schedule quality as a scalar
-- Cache slots for Q: k_Q = ⌊C'/s_Q⌋
-- Joint optimization: min_{m,n} |D| + ρ_Q(m, n, C') · |Q|, s.t. s_D + idx(s_D) + 2·s_Q + R ≤ C, recall(m,n) ≥ τ
-- ρ_Q estimable empirically from learning set — run a few (m,n) on sample data, fit, optimize
-- Bridges combinatorial and analytical: schedule quality captured implicitly via ρ_Q
 
 **Formulation E — Sparse Join Matrix Traversal:**
-- Join matrix J is m × n binary matrix where J[i,j] = 1 iff (D_i, Q_j) ∈ E(m,n). Processing the join = visiting all nonzeros of J.
-- I/O cost: T = s_D · Σᵢ loads(D_i) + s_Q · Σⱼ loads(Q_j). Minimize total block loads over row/column permutation and panel decomposition.
-- **Panel traversal:** Group rows into panels of height h s.t. all Q-blocks touched by a panel fit in C'. Process panel-by-panel. Exactly SpMM tiling.
-- **Row/column symmetry explicit** — doesn't privilege either relation (unlike pinned-D in C). Optimal may pin Q, pin D, or alternate.
-- Panel height = cache allocation: h · s_D + idx(s_D) vs. C' budget for Q-blocks within each panel.
-- **Novel twist vs. standard SpMM tiling:** we *choose* the sparsity pattern by choosing m, n. Problem = design a sparse matrix (via partitioning) cheapest to traverse under cache budget C'.
-- Full formulation: min_{m, n, Π, σ} s_D · Σᵢ loads(D_i | Π, σ) + s_Q · Σⱼ loads(Q_j | Π, σ), where Π = panel decomposition, σ = row/col permutation, J(m,n) = join matrix from partitioning, subject to s_D + idx(s_D) + 2·s_Q + R ≤ C, recall(m,n) ≥ τ.
-- Subsumes B and C: B is the edge ordering view; C is the continuous relaxation with ρ_Q absorbing panel structure.
-- **Connections:** Hong & Kung red-blue pebble game (1981) gives I/O lower bounds for matrix computations under cache constraints → potential theoretical contribution. Sparse matrix reordering (RCM, METIS) directly applicable.
+
 
 #### 2.2 Block-Pair Comparison Using Indices
 Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses a two-level index structure to prune and execute the comparison entirely on GPU.
