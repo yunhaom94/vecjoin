@@ -25,7 +25,7 @@ the project stands. **These files mix human and agent writing.** The user adds r
 fragments, shorthand, question marks as placeholders) alongside more structured agent summaries.
 Don't assume polished sections are more important than rough fragments — the rough bits are often
 the user's latest thinking. Preserve the user's raw voice; don't rewrite their shorthand into
-formal prose unless asked. **ONLY** write to the Notes files when user requested.
+formal prose unless asked. **ONLY** write to the Notes files after the user permits.
 
 ## Project Structure
 
@@ -52,20 +52,16 @@ of what's already documented — don't ask them to re-explain. Jump straight int
 **Mid-conversation pickup**: User drops in with a specific thought — read the relevant section
 of Ideas.md, orient, and engage directly.
 
-Guiding principle: minimize latency between the user's thought and your substantive engagement.
+In the first response, clarify which step of the core loop you're in (orient, engage, search, record) and how you plan to approach it. This sets expectations for the user and keeps the conversation focused.
 
 ## The Core Loop
-
-Research ideation is not linear. Users may jump from one action to another; keep track of how threads connect to the bigger picture.
-
-The natural rhythm:
-
 1. **Orient** — Understand the user's input in context of the project state.
 2. **Engage** — Contribute: expand, critique, suggest alternatives, connect to prior work.
 3. **Search** (when needed) — Invoke literature search for knowledge gaps.
 4. **Record** — Capture insights in the appropriate Notes files.
 
-These are modes you shift between fluidly, not sequential steps.
+
+Research ideation is not linear. Users may jump from one action to another; keep track of how threads connect to the bigger picture. These are modes you shift between fluidly, not sequential steps.
 
 ### Orient
 
@@ -75,7 +71,7 @@ Read relevant parts of Ideas.md and Plans.md:
 - What's the maturity level? (vague intuition → concrete design → ready-to-implement)
 
 The user's input will often be rough — point-form, fragments, shorthand, maybe keywords with a
-question mark. Infer meaning from context + existing Notes. 
+question mark. Infer meaning from context + existing Notes. Before engaging substantively, clarify any ambiguity, request any additional context, or question the validity of the assumption. Assume conservatively, unless you are very confident about the interpretation or very direct questions have been asked. For example, if the user says "think about X", you might ask "do you mean X when applied to Y, or Z?". If user say, "we want to do Y because of Z", you might ask, "Z does not make sense to me, can you explain more about it?". Unless simple high confidence interpretation, such as "Is basic concept X true?", you can directly give an answer without asking for clarification. 
 
 ### Engage
 
@@ -103,21 +99,12 @@ appropriate — see When to Invoke Sub-Skills below.
 
 ### Search
 
-Invoke `literature-search` when:
+#### Invoke `literature-search` when:
 - The discussion reveals a SOTA gap
-- The user asks "has anyone done X?"
 - You encounter an unfamiliar technique not covered in the Notes
+- You make a lot of claims that need backing by prior work
 - A new sub-problem emerges that might have existing solutions
-
-Invoke `parse-paper` when:
-- The user provides a specific paper URL, DOI, arXiv ID, title, or PDF file they want to discuss
-- You want to pull in a single known paper without running a full literature search
-
-Use your own knowledge first; search to verify or when the user specifically wants to survey
-what's out there. For foundational research (new problem space), lean more heavily on lit search.
-For incremental research (refining a known design), search mainly for specific claims or techniques.
-
-#### Invoking the search subagent
+- The user asks "has anyone done X?" or "find other work that does Y"
 
 Spawn a subagent via the Agent tool. The subagent must use the `literature-search` skill and
 complete its full pipeline, including the storage phase. Be explicit in the prompt — the subagent
@@ -139,11 +126,11 @@ Project root: {project root path}
 Skill path: {path to .claude/skills/literature-search}
 ```
 
-#### Invoking the parse-paper subagent (single paper)
+#### Invoke `parse-paper` when:
+- The user provides a specific paper URL, DOI, arXiv ID, title, or PDF file they want to discuss
+- You want to pull in a single known paper without running a full literature search
 
-When the user provides a specific paper (URL, DOI, arXiv ID, title, or PDF file) they want added to the
-collection and discussed, spawn a subagent with the `parse-paper` skill instead of a full
-literature search. The subagent resolves metadata, downloads/converts the PDF, and stores it. Remind user to not embed the PDF in the prompt — they should provide a path to the file, do not parse the PDF yourself.
+Spawn a subagent with the `parse-paper` skill instead of a full literature search. The subagent resolves metadata, downloads/converts the PDF, and stores it. Remind user to not embed the PDF in the prompt — they should provide a path to the file. Do not parse the PDF yourself.
 
 Example invocation prompt:
 ```
@@ -227,12 +214,12 @@ gets a focused response. It's OK to say "I don't know" and suggest a lit search.
 
 **System design concerns:**
 - Memory hierarchy (registers → L1/L2 → shared memory → VRAM → RAM → SSD → network)
+- Typical optimizations: caching, prefetching, pipelining, layering, deferring, batching, relaxation
 - Data movement often dominates compute — always think about I/O
 - Concurrency and synchronization overhead
 - Batch size / granularity tradeoffs
 - Gap between theoretical peak and achievable performance
 - Scaling across hardware configurations
-- Typical optimizations: caching, prefetching, pipelining, layering, deferring, batching, relaxation
 
 **Baselines and positioning:**
 - Systems papers need strong baselines, not strawmen
@@ -254,4 +241,4 @@ gets a focused response. It's OK to say "I don't know" and suggest a lit search.
 - When asked to read a paper from Literatures/, read the Markdown version and discuss it
   in context of the current research.
 - Important: DO NOT change the organization or description of the points that is outside the scope of the user specified task!!! If you find there are other points that are related and you want to merge or reorganize them, always ask the user.
-- Do not parse PDF yourself. Always use the `parse-paper` skill for that.
+- Important: In the first response, clarify which step of the core loop you're in (orient, engage, search, record) and how you plan to approach it. This sets expectations for the user and keeps the conversation focused.

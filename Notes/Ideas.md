@@ -31,28 +31,32 @@ This unifies the index-based search and data scheduling into a single design —
 - Partitions are units of DMA transfer between disk/RAM/VRAM, sized so that a partition pair fits in VRAM with room for double-buffering.
 - **VRAM-adaptive:** Partition count is determined by available VRAM. The algorithm adapts to different GPU memory sizes (e.g., 80GB A100 → ~115 partitions; 12GB consumer GPU → more partitions, same algorithm).
 
-**VRAM constraints:**
-- s_D + idx(s_D) + 2·s_Q + R ≤ C  (VRAM feasibility, double-buffered Q)
-- C' = C - s_D - idx(s_D) - R  (effective cache budget for Q blocks)
-- recall(m, n) ≥ τ  (accuracy)
-
-**Key Optimization parameter:**
-- More partitions → tighter pruning (fewer edges) but more blocks to schedule, also more compute because within each partition pair, the index is smaller → less pruning → more GPU compute time
-- Fewer partitions → less scheduling overhead but coarser pruning (more wasted I/O)
-- Cache capacity C determines reuse potential — more blocks fitting → more reuse
-- With double buffering, the most optimal is when the block size where compute time ≈ transfer time, so that the GPU is fully utilized while data is being transferred.
-
 
 #### 2.1 Block Scheduling
-The idea: nested loop-join, but only partial pairs are compared. We need to find the most optimal order to schedule the block pairs to be loaded in to the VRAM.
+The idea: nested loop-join, but only partial pairs are compared. We need to find the most optimal order to schedule the block pairs to be loaded in to the VRAM. 
 
-**Three modelings of the scheduling sub-problem:**
-Each formulation below models a different approach to optimizing the schedule σ in the unified objective. All share the VRAM constraint (s_D + idx(s_D) + 2·s_Q + R ≤ C) and effective cache budget C' = C - s_D - idx(s_D) - R for Q-block reuse.
+In a block nested loop join, the most optimal schedule is to pin blocks of D in VRAM and stream blocks of Q against it, and have pinned as block as many as possible. However, we cannot say the same for our use case.
+Formulation.
 
-**Formulation B — Bipartite Edge Traversal with Cache (Combinatorial):**
+**Partition/block Size is the key tuning parameter**
+- More partitions → tighter pruning (fewer edges) but more blocks to schedule, also more compute because within each partition pair, the index is smaller → less pruning → more GPU compute time
+- Fewer partitions → less scheduling overhead but coarser pruning (more wasted I/O)
+- The block size constraint is the VRAM budget: S_D (data) + D_S * 2 + indices + results < VRAM -> at least double buffer is needed to avoid I/O latency, so each block < (VRAM - index - result buffer) / 3
 
+ There is a sweet spot for partition size, because if the partition is too small, the 2nd level pruning is pointless, and we only relies on centroid rather than more advanced indices. However if its too big, we also loss pruning power of the 1 level centroids
 
-**Formulation E — Sparse Join Matrix Traversal:**
+^ after discussion, I don't think it is possible to analytically determine the optimal partition count.
+
+Since we are pipelining data transfer, all we need to make sure the total I/O time is lower by the compute time. Include block size experiments.
+
+**Modeling of scheduling sub-problem:**
+After the partition size is determined, the scheduling problem is to find the optimal order of block pairs (D_i, Q_j) to load into VRAM. 
+
+Given a cache size (VRAM budget), we want to find out the sequence of loading all block pairs that minimizes the load count - the cache replacement policy 
+
+1. Formulation B — Bipartite Edge Traversal
+2. Sparse Join Matrix Traversal
+
 
 
 #### 2.2 Block-Pair Comparison Using Indices

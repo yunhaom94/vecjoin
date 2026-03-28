@@ -346,15 +346,6 @@ This document contains a list of literatures that is relevant to this project. E
 ---
 
 ---
-- **Title**: Communication Optimal Parallel Multiplication of Sparse Random Matrices
-- **Author(s)**: Grey Ballard, Aydin Buluc, James Demmel, Laura Grigori, Benjamin Lipshitz, Oded Schwartz, Sivan Toledo
-- **Year**: 2013
-- **Venue**: SPAA 2013 (ACM Symposium on Parallelism in Algorithms and Architectures)
-- **Summary**: Extends Hong-Kung I/O lower bounds to sparse matrix-matrix multiplication (SpMM). Proves that for sparse matrices, the I/O lower bound depends on the sparsity structure (nonzero pattern), not just the total nonzero count. Shows that for Erdos-Renyi random sparse matrices, 1D and 2D decompositions are communication-optimal under certain density conditions. Establishes that sparse I/O complexity is fundamentally determined by the interaction between sparsity pattern and cache/memory hierarchy.
-- **Relevance**: Key theoretical reference for Formulation E. Proves that the I/O cost of traversing our sparse join matrix J depends on J's specific nonzero pattern — which we control by choosing partition counts (m, n). This means our choice of (m, n) affects not just the number of nonzeros (surviving pairs) but the I/O complexity of processing them. Their lower bounds could yield a theoretical contribution: proving that our panel-based traversal is near-optimal for the join matrix's sparsity structure.
----
-
----
 - **Title**: Hypergraph Partitioning for Sparse Matrix-Matrix Multiplication
 - **Author(s)**: Grey Ballard, Alex Druinsky, Nicholas Knight, Oded Schwartz
 - **Year**: 2015
