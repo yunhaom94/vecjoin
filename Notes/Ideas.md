@@ -52,9 +52,9 @@ Since we are pipelining data transfer, all we need to make sure the total I/O ti
 **Modeling of scheduling sub-problem:**
 After the partition size is determined, the scheduling problem is to find the optimal order of block pairs (D_i, Q_j) to load into VRAM. 
 
-Given a cache size (VRAM budget), we want to find out the sequence of loading all block pairs that minimizes the load count - the cache replacement policy 
+Given a cache size (VRAM budget), we want to find out the sequence of loading all block pairs that minimizes the load count. The problem can be formulated as follows: Given a set of pairs of blocks to load (A, a), (A, b), (B, a), (C, c) where upper and lower case are both page id and a cache size C with Belady algorithm as eviction poliocy, find the sequence of loading these blocks that minimizes the total load count.
 
-1. Formulation B — Bipartite Edge Traversal
+1. Bipartite Edge Traversal
 2. Sparse Join Matrix Traversal
 
 
