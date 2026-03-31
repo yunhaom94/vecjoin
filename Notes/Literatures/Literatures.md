@@ -380,3 +380,77 @@ This document contains a list of literatures that is relevant to this project. E
 - **Summary**: Proposes SimJoin, a new approximate ε-similarity join algorithm that departs from selection-based approaches (which treat each query point as an independent range query). Two core contributions: (1) *join window sliding* — reuses join results of processed points by sliding along an adjacent graph (approximated by a proximity graph like NSG) over Y, exploiting overlap between consecutive join windows; (2) *join window order selection* — optimizes the processing order of X points via MST on an ε-neighbor graph over X ∪ {y₀}, minimizing total sliding cost. Achieves 10x+ speedup over VBase and XJoin at 0.99+ recall on datasets up to 11M vectors (single-threaded CPU). Also extends to k-similarity join and proximity graph index maintenance via join window sliding.
 - **Relevance**: Within bucket join computation optmize, direclty compete to our index x clustering based solution. But it is CPU only. And probably will not work for GPU.
 ---
+
+---
+- **Title**: Red-Blue Pebble Game: Complexity of Computing the Trade-Off between Cache Size and Memory Transfers
+- **Author(s)**: Erik D. Demaine, Quanquan C. Liu
+- **Year**: 2018
+- **Venue**: ACM Symposium on Parallelism in Algorithms and Architectures (SPAA 2018)
+- **Summary**: Proves that computing the optimal trade-off between cache size (number of red pebbles) and memory transfers (recolorings) in the red-blue pebble game on general DAGs is PSPACE-complete. Even under the natural restriction of forbidding pebble deletions (no discarding data from cache without writing to disk), the problem remains NP-complete. Also shows the trade-off problem parameterized by number of transitions is W[1]-hard. These are the first formal complexity results for optimizing I/O under the Hong-Kung pebble game model. (Note: Full text was not available for download and conversion.)
+- **Relevance**: Establishes that optimizing the red-blue pebble game (the formal model closest to MECC) is PSPACE-complete in general, NP-complete with no-discard restriction. However, this is for general DAGs — our bipartite edge-covering problem has different structure. Kept for theoretical context; may not be directly applicable to our bipartite scheduling sub-problem.
+---
+
+---
+- **Title**: Cache-Oblivious Nested-Loop Joins
+- **Author(s)**: Bingsheng He, Qiong Luo
+- **Year**: 2006
+- **Venue**: ACM International Conference on Information and Knowledge Management (CIKM 2006)
+- **Summary**: Proposes cache-oblivious algorithms for nested-loop joins that automatically adapt to any memory hierarchy without knowing cache parameters. Two approaches: (1) recursive partitioning for NLJ without indexes -- recursively divides inner and outer relations into equal halves, ordering sub-joins to maximize temporal reuse of cached data (achieving the same I/O complexity as cache-conscious block NLJ); (2) recursive clustering and buffering for index NLJ. Proves the cache-oblivious NLJ achieves O(|R||S|/(BM)) I/Os, matching the cache-conscious optimal. The recursive partitioning strategy is structurally similar to our problem: it determines an ordering of (sub-relation pair) processing to minimize cache misses.
+- **Relevance**: Directly relevant to our block scheduling sub-problem. Their recursive bisection approach (divide both relations, recurse on 4 sub-joins) provides an alternative to DiskJoin's Gorder-based heuristic for determining edge processing order. The key insight — that recursive partitioning achieves asymptotically optimal I/O without knowing cache size — suggests a cache-oblivious scheduling strategy for our bipartite partition graph. However, their analysis assumes a dense join (all pairs compared); adapting to our sparse bipartite case (after centroid pruning) is the open question.
+---
+
+---
+- **Title**: Red-Blue Pebbling Revisited: Near Optimal Parallel Matrix-Matrix Multiplication (COSMA)
+- **Author(s)**: Grzegorz Kwasniewski, Marko Kabic, Maciej Besta, Joost VandeVondele, Raffaele Solca, Torsten Hoefler
+- **Year**: 2019
+- **Venue**: International Conference for High Performance Computing, Networking, Storage and Analysis (SC 2019)
+- **Summary**: Proposes COSMA, a parallel matrix-matrix multiplication algorithm that is near communication-optimal for all combinations of matrix dimensions, processor counts, and memory sizes. The key idea is to derive an optimal sequential schedule using the red-blue pebble game (tight to within 0.03% for 10MB fast memory) and then parallelize it while preserving I/O optimality. Uses an analytical solution to the pebble game for the specific structure of matrix multiplication DAGs to find the optimal tiling/blocking that minimizes data movement. Achieves up to 25x speedup over vendor BLAS libraries for irregular matrix shapes.
+- **Relevance**: Maybe used in quick reference
+---
+
+
+
+---
+- **Title**: Exploiting Locality in Graph Analytics through Hardware-Accelerated Traversal Scheduling
+- **Author(s)**: Anurag Mukkara, Nathan Beckmann, Maleen Abeydeera, Xiaosong Ma, Daniel Sanchez
+- **Year**: 2018
+- **Venue**: IEEE/ACM International Symposium on Microarchitecture (MICRO 2018)
+- **Summary**: Proposes Grasp, a hardware-software approach to improve locality in graph processing by reordering vertex processing at runtime. Key insight: real-world graphs have significant potential locality (vertices in well-connected regions share neighbors), but exploiting it requires scheduling vertices so that those sharing neighbors are processed together. Grasp uses a hardware scheduler that dynamically reorders vertex processing based on cache contents, prioritizing vertices whose neighbors are already cached. Achieves 1.5-2x speedup on graph analytics workloads by reducing cache misses. The traversal scheduling problem -- deciding which vertex to process next given current cache contents -- is formally related to our edge ordering problem. (Note: Full text was not available for download and conversion.)
+- **Relevance**:
+---
+
+---
+- **Title**: Improving I/O Complexity of Triangle Enumeration
+- **Author(s)**: Yi Cui, Di Xiao
+- **Year**: 2022
+- **Venue**: IEEE Transactions on Knowledge and Data Engineering (TKDE)
+- **Summary**: Proposes the Trigon framework unifying external-memory triangle enumeration algorithms (Pagh and PCF approaches). Analyzes how edge partitioning and processing order affect I/O cost. Key contribution: shows that the choice of which edges to co-load (partition together) and the order of processing significantly impacts total I/O. Provides a framework to analyze and compare different partitioning strategies. The Trigon scheme achieves I/O never worse than either Pagh or PCF alone. The structural analysis of how edge co-loading patterns affect I/O cost directly parallels our problem of ordering partition-pair processing to minimize vertex (re-)loads. (Note: Full text was not available for download and conversion.)
+- **Relevance**:
+---
+
+---
+- **Title**: Adaptive Sparse Tiling for Sparse Matrix Multiplication
+- **Author(s)**: Changwan Hong, Aravind Sukumaran-Rajam, Israt Nisa, Kunal Singh, P. Sadayappan
+- **Year**: 2019
+- **Venue**: ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming (PPoPP 2019)
+- **Summary**: Devises an adaptive tiling strategy for SpMM (sparse-dense matrix multiplication) and SDDMM. Uses the standard CSR representation with intra-row reordering to enable adaptive tiling: columns within each row are reordered so that nonzeros accessing similar columns of the dense matrix are grouped together, enabling effective cache blocking. The adaptive tile sizes are determined by the local density of nonzeros. Demonstrates significant speedups over MKL and other baselines. The intra-row reordering to improve column-data reuse is directly analogous to reordering edges of a bipartite graph so that edges sharing endpoints are processed together, minimizing cache misses for the dense operand. (Note: Full text was not available for download and conversion.)
+- **Relevance**:
+---
+
+---
+- **Title**: Spectral Lower Bounds on the I/O Complexity of Computation Graphs
+- **Author(s)**: Saachi Jain, Matei Zaharia
+- **Year**: 2019
+- **Venue**: ACM Symposium on Parallelism in Algorithms and Architectures (SPAA 2019)
+- **Summary**: Presents a novel spectral method to derive I/O lower bounds for arbitrary computation graphs in the two-level memory model. Prior I/O lower bound techniques (Hong-Kung pebble game, Loomis-Whitney inequality) required problem-specific structural analysis. This work uses the spectrum (eigenvalues) of the computation graph's adjacency matrix to bound the maximum number of computations achievable per I/O operation. The spectral bound provides a systematic, automatable approach to derive I/O lower bounds for any computation DAG. Applied to matrix multiplication, FFT, and other computations, recovering known bounds. The technique could potentially be applied to analyze I/O complexity of sparse bipartite graph traversal. (Note: Full text was not available for download and conversion.)
+- **Relevance**:
+---
+
+---
+- **Title**: Minimizing I/Os in Out-of-Core Task Tree Scheduling
+- **Author(s)**: Loris Marchal, Oliver Sinnen, Frédéric Vivien
+- **Year**: 2017
+- **Venue**: IEEE International Symposium on Parallel and Distributed Processing Workshops (IPDPSW 2017)
+- **Summary**: Studies the problem of scheduling a tree of tasks to minimize I/O when data exceeds memory capacity. Each task consumes input data and produces output data used by its parent; a task requires all its inputs in memory simultaneously. The scheduling problem -- choosing which task to execute next given limited memory -- is shown to be NP-hard in general. For tree-structured task graphs, they provide optimal polynomial-time algorithms based on the postorder traversal structure of the tree. The memory-constrained task scheduling formulation is structurally related to our edge ordering problem: both require choosing a processing order that keeps required data co-resident in limited fast memory. (Note: Full text was not available for download and conversion.)
+- **Relevance**:
+---

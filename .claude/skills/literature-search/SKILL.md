@@ -206,6 +206,10 @@ a file for this report.
 ```
 
 ## Important Notes
+- **Semantic Scholar API key**: The `S2_API_KEY` environment variable is set via
+  `.claude/settings.local.json` and available in the shell. The bundled `search_papers.py`
+  script reads it automatically. For any direct `curl` calls to `api.semanticscholar.org`,
+  include `-H "x-api-key: $S2_API_KEY"` to get higher rate limits.
 - **Rate limiting**: Add 1-second delays between API calls to avoid being blocked. The
   bundled scripts handle this for the initial search, but be mindful when making additional
   API calls (e.g., Unpaywall lookups).

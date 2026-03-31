@@ -38,6 +38,10 @@ The caller also provides:
 Skip this step if the caller already provided full metadata (title, authors, year, venue,
 abstract, PDF URL).
 
+The `S2_API_KEY` environment variable is set via `.claude/settings.local.json` and is
+available in the shell. Always include it as `-H "x-api-key: $S2_API_KEY"` in Semantic
+Scholar API calls — this provides higher rate limits and avoids 429 errors.
+
 **arXiv ID or URL** (e.g., `2301.00001` or `https://arxiv.org/abs/2301.00001`):
 ```bash
 curl -s "http://export.arxiv.org/api/query?id_list=<arxiv_id>"
@@ -47,18 +51,18 @@ PDF URL: `https://arxiv.org/pdf/<arxiv_id>.pdf`
 
 **DOI**:
 ```bash
-curl -s -H "Accept: application/json" "https://api.semanticscholar.org/graph/v1/paper/DOI:<doi>?fields=title,authors,year,venue,abstract,openAccessPdf"
+curl -s -H "x-api-key: $S2_API_KEY" "https://api.semanticscholar.org/graph/v1/paper/DOI:<doi>?fields=title,authors,year,venue,abstract,openAccessPdf"
 ```
 
 **Semantic Scholar URL** (`https://www.semanticscholar.org/paper/.../<paper_id>`):
 Extract the paper ID from the URL tail and query:
 ```bash
-curl -s "https://api.semanticscholar.org/graph/v1/paper/<paper_id>?fields=title,authors,year,venue,abstract,openAccessPdf"
+curl -s -H "x-api-key: $S2_API_KEY" "https://api.semanticscholar.org/graph/v1/paper/<paper_id>?fields=title,authors,year,venue,abstract,openAccessPdf"
 ```
 
 **Title only**: Search Semantic Scholar:
 ```bash
-curl -s "https://api.semanticscholar.org/graph/v1/paper/search?query=<url_encoded_title>&limit=3&fields=title,authors,year,venue,abstract,openAccessPdf"
+curl -s -H "x-api-key: $S2_API_KEY" "https://api.semanticscholar.org/graph/v1/paper/search?query=<url_encoded_title>&limit=3&fields=title,authors,year,venue,abstract,openAccessPdf"
 ```
 Pick the closest match by title similarity.
 

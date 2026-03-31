@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -19,6 +20,17 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from difflib import SequenceMatcher
+
+# Semantic Scholar API key from environment (set via .claude/settings.local.json env field)
+S2_API_KEY = os.environ.get('S2_API_KEY', '')
+
+
+def get_s2_headers() -> dict:
+    """Return headers for Semantic Scholar API requests, including API key if available."""
+    headers = {'User-Agent': 'LiteratureSearch/1.0'}
+    if S2_API_KEY:
+        headers['x-api-key'] = S2_API_KEY
+    return headers
 
 
 def normalize_title(title: str) -> str:
@@ -35,11 +47,13 @@ def titles_match(t1: str, t2: str, threshold: float = 0.85) -> bool:
     return SequenceMatcher(None, n1, n2).ratio() >= threshold
 
 
-def api_request_with_retry(url: str, max_retries: int = 4, base_delay: float = 2.0) -> dict | None:
+def api_request_with_retry(url: str, max_retries: int = 4, base_delay: float = 2.0, headers: dict | None = None) -> dict | None:
     """Make an API request with exponential backoff on rate limit (429) and server errors (5xx)."""
+    if headers is None:
+        headers = {'User-Agent': 'LiteratureSearch/1.0'}
     for attempt in range(max_retries + 1):
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'LiteratureSearch/1.0'})
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.loads(resp.read().decode('utf-8'))
         except urllib.error.HTTPError as e:
@@ -77,7 +91,7 @@ def search_semantic_scholar(query: str, max_results: int = 50) -> list:
         })
         url = f"https://api.semanticscholar.org/graph/v1/paper/search?{params}"
 
-        data = api_request_with_retry(url)
+        data = api_request_with_retry(url, headers=get_s2_headers())
         if data is None or not data.get('data'):
             break
 
