@@ -390,14 +390,6 @@ This document contains a list of literatures that is relevant to this project. E
 - **Relevance**: Establishes that optimizing the red-blue pebble game (the formal model closest to MECC) is PSPACE-complete in general, NP-complete with no-discard restriction. However, this is for general DAGs — our bipartite edge-covering problem has different structure. Kept for theoretical context; may not be directly applicable to our bipartite scheduling sub-problem.
 ---
 
----
-- **Title**: Cache-Oblivious Nested-Loop Joins
-- **Author(s)**: Bingsheng He, Qiong Luo
-- **Year**: 2006
-- **Venue**: ACM International Conference on Information and Knowledge Management (CIKM 2006)
-- **Summary**: Proposes cache-oblivious algorithms for nested-loop joins that automatically adapt to any memory hierarchy without knowing cache parameters. Two approaches: (1) recursive partitioning for NLJ without indexes -- recursively divides inner and outer relations into equal halves, ordering sub-joins to maximize temporal reuse of cached data (achieving the same I/O complexity as cache-conscious block NLJ); (2) recursive clustering and buffering for index NLJ. Proves the cache-oblivious NLJ achieves O(|R||S|/(BM)) I/Os, matching the cache-conscious optimal. The recursive partitioning strategy is structurally similar to our problem: it determines an ordering of (sub-relation pair) processing to minimize cache misses.
-- **Relevance**: Directly relevant to our block scheduling sub-problem. Their recursive bisection approach (divide both relations, recurse on 4 sub-joins) provides an alternative to DiskJoin's Gorder-based heuristic for determining edge processing order. The key insight — that recursive partitioning achieves asymptotically optimal I/O without knowing cache size — suggests a cache-oblivious scheduling strategy for our bipartite partition graph. However, their analysis assumes a dense join (all pairs compared); adapting to our sparse bipartite case (after centroid pruning) is the open question.
----
 
 ---
 - **Title**: Red-Blue Pebbling Revisited: Near Optimal Parallel Matrix-Matrix Multiplication (COSMA)

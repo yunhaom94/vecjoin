@@ -52,24 +52,24 @@ Since we are pipelining data transfer, all we need to make sure the total I/O ti
 **Modeling of scheduling sub-problem:**
 After the partition size is determined, the scheduling problem is to find the optimal order of block pairs (D_i, Q_j) to load into VRAM. 
 
-Given a cache size (VRAM budget), we want to find out the sequence of loading all block pairs that minimizes the load count. The problem can be formulated as follows: Given a set of pairs of blocks to load (A, a), (A, b), (B, a), (C, c) where upper and lower case are both page id and a cache size C with Belady algorithm as eviction poliocy, find the sequence of loading these blocks that minimizes the total load count.
+Given a cache size (VRAM budget), we want to find out the sequence of loading all block pairs that minimizes the load count. The problem can be formulated as follows: Given a set of pairs of blocks to load (A, a), (A, b), (B, a), (C, c) where upper and lower case are both page id and a cache size C with Belady algorithm as eviction policy, find the sequence of loading these blocks that minimizes the total load count.
 
-1. Bipartite Edge Traversal
-2. Sparse Join Matrix Traversal
+
+Option 1: DiskJoin Style Bipartite Graph Reordering
+- Fix D-blocks, greedly order Q-blocks by the number of shared D-block neighbors (Gorder-style). This maximizes temporal locality in the block cache, reducing load count. The optimality of this heuristic depends on the degree distribution of the bipartite graph.
+
+Option 2: Sparse Join Matrix Traversal
 
 
 
 #### 2.2 Block-Pair Comparison Using Indices
-Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses a two-level index structure to prune and execute the comparison entirely on GPU.
-
-**Coarse-level pruning (before data load):**
-- If `dist(c_Di, c_Qj) - r_Di - r_Qj > threshold`, the entire coarse pair is skipped **before any data is loaded**. Evaluated on CPU using only coarse centroids (~0.5MB total).
-- Q's coarse partitions use independent clustering with separate centers. No index is built on Q — Q vectors are queries streamed against D's index.
+Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses the second-level index to prune and execute the comparison entirely on GPU.
 
 **Per-partition vector index (fine-level search on GPU):**
 - Build a vector index (IVF, CAGRA, IVF-RaBitQ, etc.) within each coarse partition of `D`. The index structure serves as the fine-grained pruning mechanism.
 - E.g., IVF on a ~10M-vector partition → ~3000 IVF clusters as fine-grained units.
-- When a coarse pair (D_i, Q_j) is loaded into VRAM, Q_j's vectors are searched against D_i's index entirely on GPU.
+- When a coarse pair (D_i, Q_j) is loaded into VRAM, Q_j's vectors are searched against D_i's index to generate candidate pairs. 
+- Finally, use GEMM to compute distances for candidates.
 
 **Index storage strategy:**
 
