@@ -14,51 +14,47 @@ Using GPUs to do approximate vector similarity join for large, high-dimensional 
 *Main ideas are the core concepts and features of the project. This should be a short list between 3-5 ideas that can be changed as the project evolves. **Important:** this section should evolve over time, and the ideas should be refined and updated as the project progresses, and finally becomes a detailed design document for the project.*
 
 
-### 1. GPU-Accelerated Approximate Vector Similarity Join
+### GPU-Accelerated Approximate Vector Similarity Join Overview
 Given a database set `D` and a query set `Q` of high-dimensional vectors, find all pairs (d, q) with distance below a threshold (or top-k closest pairs). The system uses a two-level approach:
 - **Coarse-level:** Clustering-based partitioning of both `D` and `Q` independently. Centroid distances prune partition pairs before any data is loaded.
 - **Fine-level:** Per-partition vector indices on `D` (IVF, CAGRA, IVF-RaBitQ, etc.) prune individual vector comparisons on GPU.
 
-This unifies the index-based search and data scheduling into a single design — coarse partitions are data movement units, per-partition indices are the search/pruning mechanism.
+**Target scale:** Billions of vectors at ~1000 dimensions (4KB/vector, ~4TB total).
 
+### Workflow:
+1. Use random samples to cluster `D` and `Q` into coarse partition blocks.
+   - Done on CPU and assign each vector to its nearest centroid.
+   - Block sizes for D blocks and Q blocks are tuning parameters.
 
-#### 2 Theoretical Formulation
+2. Use triangle inequality-based pruning to determine which partition pairs (D_i, Q_j) need to be compared based on centroid distances, and generate a bipartite join graph
+   - This is done on CPU.
+   - TODO: explore better pruning techniques
 
-**Problem setup:**
-- **Target scale:** Billions of vectors at ~1000 dimensions (4KB/vector, ~4TB total).
-- Both `D` and `Q` are partitioned **independently** using k-means clustering (following DiskJoin). This produces a **bipartite bucket graph** G(m,n) where edges represent coarse partition pairs that need comparison.
-- **Construction:** Use a **learning set** (random sample) to determine cluster centers. Stream the full dataset from disk, assigning each vector to its nearest center. Avoids loading 4TB into memory.
-- Partitions are units of DMA transfer between disk/RAM/VRAM, sized so that a partition pair fits in VRAM with room for double-buffering.
-- **VRAM-adaptive:** Partition count is determined by available VRAM. The algorithm adapts to different GPU memory sizes (e.g., 80GB A100 → ~115 partitions; 12GB consumer GPU → more partitions, same algorithm).
+3. Find the optimal schedule of block pairs to load into VRAM (see Block Scheduling).
+   - This is done on CPU.
+  
+4. Follow the sequence, using GPU Direct Storage (GDS) for direct disk→VRAM transfers. For evicted blocks, create a "Victim Cache" in RAM to hold recently evicted blocks for potential reuse, reducing redundant disk reads. The RAM cache size is a tuning parameter.
 
+5. For each loaded block pair (D_i, Q_j), execute the comparison on GPU using the per-partition index for second-level pruning, then compute distances for candidate pairs using GEMM. (See Block-Pair Comparison Using Indices)
 
-#### 2.1 Block Scheduling
+6. Filter results and sort to get final output.
+   1. TODO: Where to store results? RAM or VRAM?
+   2. TODO: Where to sort the final results? GPU or CPU?
+
+#### Block Scheduling
 The idea: nested loop-join, but only partial pairs are compared. We need to find the most optimal order to schedule the block pairs to be loaded in to the VRAM. 
 
 In a block nested loop join, the most optimal schedule is to pin blocks of D in VRAM and stream blocks of Q against it, and have pinned as block as many as possible. However, we cannot say the same for our use case.
 Formulation.
 
-**Partition/block Size is the key tuning parameter**
-- More partitions → tighter pruning (fewer edges) but more blocks to schedule, also more compute because within each partition pair, the index is smaller → less pruning → more GPU compute time
-- Fewer partitions → less scheduling overhead but coarser pruning (more wasted I/O)
-- The block size constraint is the VRAM budget: S_D (data) + D_S * 2 + indices + results < VRAM -> at least double buffer is needed to avoid I/O latency, so each block < (VRAM - index - result buffer) / 3
 
- There is a sweet spot for partition size, because if the partition is too small, the 2nd level pruning is pointless, and we only relies on centroid rather than more advanced indices. However if its too big, we also loss pruning power of the 1 level centroids
-
-^ after discussion, I don't think it is possible to analytically determine the optimal partition count.
-
-Since we are pipelining data transfer, all we need to make sure the total I/O time is lower by the compute time. Include block size experiments.
 
 **Modeling of scheduling sub-problem:**
 After the partition size is determined, the scheduling problem is to find the optimal order of block pairs (D_i, Q_j) to load into VRAM. 
 
 Given a cache size (VRAM budget), we want to find out the sequence of loading all block pairs that minimizes the load count. The problem can be formulated as follows: Given a set of pairs of blocks to load (A, a), (A, b), (B, a), (C, c) where upper and lower case are both page id and a cache size C with Belady algorithm as eviction policy, find the sequence of loading these blocks that minimizes the total load count.
 
-
-Option 1: DiskJoin Style Bipartite Graph Reordering (for reference)
-- Pin D-blocks, greedily order Q-blocks by the number of shared D-block neighbors (Gorder-style). This maximizes temporal locality in the block cache, reducing load count. The optimality of this heuristic depends on the degree distribution of the bipartite graph.
-
-Option 2: Bipartite Graph Bandwidth Reduction (we use this)
+Modeling: Bipartite Graph Bandwidth Reduction
 
 - Represent workload as an (m+n) × (m+n) symmetric adjacency matrix for the bipartite graph of D-blocks and Q-blocks. 
 
@@ -69,7 +65,9 @@ M = [ 0   A]
 - Stream blocks into the VRAM cache following this exact 1D RCM sequence.
 - Use Belady's algorithm to evict blocks that won't be needed for the longest time in the 1D sequence.
 
-#### 2.2 Block-Pair Comparison Using Indices
+TODO: show this is near optimal
+
+#### Block-Pair Comparison Using Indices
 Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses the second-level index to prune and execute the comparison entirely on GPU.
 
 **Per-partition vector index (fine-level search on GPU):**
@@ -95,21 +93,52 @@ Details TBD. Candidate per-partition index implementations: FAISS IVF-PQ, CAGRA 
 
 
 - **Learned pruning filters:** XJoin/Xling's learned filters could complement centroid-distance pruning by predicting whether a query vector has enough neighbors in a partition, skipping unnecessary searches. Useful for skewed distributions.
+
+
 - **GPUDirect Storage (GDS):** BaM and TERAIO show GPU-initiated SSD access can bypass CPU. Could enable direct disk→VRAM path, removing the RAM staging step for some transfers. Alternative to CPU-mediated DMA.
 - Evaluations
   - The dataset to use
   - The evaluation metrics to use
   - The baselines to compare with (DiskJoin, FAISS, GustANN, Tagore)
 
+- **Partition/block Size is the key tuning parameter**
+- More partitions → tighter pruning (fewer edges) but more blocks to schedule, also more compute because within each partition pair, the index is smaller → less pruning → more GPU compute time
+- Fewer partitions → less scheduling overhead but coarser pruning (more wasted I/O)
+- The block size constraint is the VRAM budget: S_D (data) + D_S * 2 + indices + results < VRAM -> at least double buffer is needed to avoid I/O latency, so each block < (VRAM - index - result buffer) / 3
+
+There is a sweet spot for partition size, because if the partition is too small, the 2nd level pruning is pointless, and we only relies on centroid rather than more advanced indices. However if its too big, we also loss pruning power of the 1 level centroids
+
+^ after discussion, I don't think it is possible to analytically determine the optimal partition count.
+
+Since we are pipelining data transfer, all we need to make sure the total I/O time is lower by the compute time. Include block size experiments.
+
 
 ## Notes
 *Notes are any other thoughts, observations, or additional information that is relevant to the project but does not constitute as an "idea" which requires action. This can include things like background, potential challenges, or any other information that is useful for the project. This should be a list of any sizes that can be changed as the project evolves.*
 - **Open question: Disk layout for coarse partitions.** After clustering, should we reorganize data on disk so each coarse partition is stored contiguously (like DiskJoin)? One-time preprocessing cost enables sequential DMA reads. How does this interact with GPUDirect Storage (GDS)?
-- **Open question: Unbalanced partitions.** K-means on real data produces uneven clusters. Oversized partitions may not fit in VRAM with their pair. Options: balanced k-means, post-hoc splitting, or adaptive subdivision at runtime.
+
+
 - **Gap in literature:** GPU-accelerated vector *similarity join* at billion scale is essentially unexplored. DiskJoin (SIGMOD 2026) is the only direct predecessor and is CPU-only. Most GPU vector search work focuses on single-query ANN, not all-pairs join. This confirms the novelty of the research direction.
+
+
+
+
+
+
+
+
+
+
 - **Related Work Note (SimJoin):** SimJoin (SIGMOD 2025) is not good for GPU because the spanning-tree-based join window sliding for sequential search.
-- Find optimal block size
- 
+- Scheduing modeling for reference:
+    1: DiskJoin Style Bipartite Graph Reordering (for reference): Pin D-blocks, greedily order Q-blocks by the number of shared D-block neighbors (Gorder-style). This maximizes temporal locality in the block cache, reducing load count. The optimality of this heuristic depends on the degree distribution of the bipartite graph.
+
+    2: Red-Blue Pebble Game on a graph where "completing an edge" requires 2 red pebbles: Use a Greedy BFS approach on the page-dependency graph. Start with the page that has the highest degree (most pairs) and process all its pairs consecutively to keep that page "red" (in cache) as long as possible. I think this is essentially the same as the DiskJoin approach.
+    
+
+
+
+
 
 ## Foundations
 *Any background of this project, including related work, previous research, or any other information that is relevant to the project. It should not be a list of literatures, but a summary of key concepts, background, SOTA solution patterns and remaining gaps in the literature that are relevant to the project.*
