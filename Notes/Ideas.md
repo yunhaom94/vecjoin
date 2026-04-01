@@ -85,7 +85,7 @@ Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses the second-lev
 |---|---|
 | Coarse centroids  | RAM |
 | D block indices |  RAM; loaded to VRAM per pair |
-| Vector data | ~35GB per partition | Disk; loaded on-demand via DMA |
+| Vector data | Disk; loaded on-demand via DMA |
 
 
 ### 3. CUDA and GPU Optimization
