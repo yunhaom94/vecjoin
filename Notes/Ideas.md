@@ -23,23 +23,25 @@ Given a database set `D` and a query set `Q` of high-dimensional vectors, find a
 
 ### Workflow:
 1. Use random samples to cluster `D` and `Q` into coarse partition blocks.
-   - Done on CPU and assign each vector to its nearest centroid.
+   - Done on CPU and assign each vector to its nearest centroid - assign vectors to clusters on disk.
    - Block sizes for D blocks and Q blocks are tuning parameters.
 
 2. Use triangle inequality-based pruning to determine which partition pairs (D_i, Q_j) need to be compared based on centroid distances, and generate a bipartite join graph
    - This is done on CPU.
-   - TODO: explore better pruning techniques
+   - TODO: explore better pruning techniques (Implementation: make this extendable)
 
 3. Find the optimal schedule of block pairs to load into VRAM (see Block Scheduling).
-   - This is done on CPU.
+   - This is done on CPU
+   - Make scheduling method pluggable, start with random order
   
 4. Follow the sequence, using GPU Direct Storage (GDS) for direct disk→VRAM transfers. For evicted blocks, create a "Victim Cache" in RAM to hold recently evicted blocks for potential reuse, reducing redundant disk reads. The RAM cache size is a tuning parameter.
 
 5. For each loaded block pair (D_i, Q_j), execute the comparison on GPU using the per-partition index for second-level pruning, then compute distances for candidate pairs using GEMM. (See Block-Pair Comparison Using Indices)
+   1. Implementation: make indexing method pluggable
 
 6. Filter results and sort to get final output.
-   1. TODO: Where to store results? RAM or VRAM?
-   2. TODO: Where to sort the final results? GPU or CPU?
+   1. Store results and sort on CPU
+   2. TODO: check if make sense to do it on GPU
 
 #### Block Scheduling
 The idea: nested loop-join, but only partial pairs are compared. We need to find the most optimal order to schedule the block pairs to be loaded in to the VRAM. 
@@ -66,6 +68,7 @@ M = [ 0   A]
 - Use Belady's algorithm to evict blocks that won't be needed for the longest time in the 1D sequence.
 
 TODO: show this is near optimal
+TODO: I nope we can find a theoretical lower bound
 
 #### Block-Pair Comparison Using Indices
 Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses the second-level index to prune and execute the comparison entirely on GPU.

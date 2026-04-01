@@ -8,6 +8,8 @@
 
 - [ ] Develop Experiments
   - [ ] Find datasets for evaluation
+- [ ] Build the framework
+- [ ] Find GPU
 
 ## Paper Outline
 *This is a outline of the paper that we will write the project. This should be a list of sections, subsections, and summaries of what will be included in each section. This should be a living document that can be changed as the project evolves.* 
@@ -21,3 +23,4 @@
 
 ## Implementation Plan
 *This is a outline of the implementation plan for the project. This should be a list of tasks that need to be done for the implementation of the project. This should be a living document that can be changed as the project evolves.*
+- [ ] Data ingestion and parsing
