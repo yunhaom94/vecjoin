@@ -55,12 +55,19 @@ After the partition size is determined, the scheduling problem is to find the op
 Given a cache size (VRAM budget), we want to find out the sequence of loading all block pairs that minimizes the load count. The problem can be formulated as follows: Given a set of pairs of blocks to load (A, a), (A, b), (B, a), (C, c) where upper and lower case are both page id and a cache size C with Belady algorithm as eviction policy, find the sequence of loading these blocks that minimizes the total load count.
 
 
-Option 1: DiskJoin Style Bipartite Graph Reordering
-- Fix D-blocks, greedly order Q-blocks by the number of shared D-block neighbors (Gorder-style). This maximizes temporal locality in the block cache, reducing load count. The optimality of this heuristic depends on the degree distribution of the bipartite graph.
+Option 1: DiskJoin Style Bipartite Graph Reordering (for reference)
+- Pin D-blocks, greedily order Q-blocks by the number of shared D-block neighbors (Gorder-style). This maximizes temporal locality in the block cache, reducing load count. The optimality of this heuristic depends on the degree distribution of the bipartite graph.
 
-Option 2: Sparse Join Matrix Traversal
+Option 2: Bipartite Graph Bandwidth Reduction (we use this)
 
+- Represent workload as an (m+n) × (m+n) symmetric adjacency matrix for the bipartite graph of D-blocks and Q-blocks. 
 
+M = [ 0   A]
+    [ A^T 0]
+
+- Run Reverse Cuthill-McKee (RCM) to get a 1D ordering of all blocks that tightly groups connected nodes 
+- Stream blocks into the VRAM cache following this exact 1D RCM sequence.
+- Use Belady's algorithm to evict blocks that won't be needed for the longest time in the 1D sequence.
 
 #### 2.2 Block-Pair Comparison Using Indices
 Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses the second-level index to prune and execute the comparison entirely on GPU.
@@ -86,7 +93,7 @@ Details TBD. Candidate per-partition index implementations: FAISS IVF-PQ, CAGRA 
 ## Minor Ideas
 *Minor ideas are supplementary concepts, features, writing points in the paper, or anything that is not directly related to one of the main ideas. This should be a list of any sizes that can be changed as the project evolves. Each idea should come with a detailed description.*
 
-- **Result set management on VRAM:** Result buffer sizing and async flush strategy. Double-buffered result output to overlap GPU compute with host transfer. Significant impact on VRAM budget observed in initial experiments.
+
 - **Learned pruning filters:** XJoin/Xling's learned filters could complement centroid-distance pruning by predicting whether a query vector has enough neighbors in a partition, skipping unnecessary searches. Useful for skewed distributions.
 - **GPUDirect Storage (GDS):** BaM and TERAIO show GPU-initiated SSD access can bypass CPU. Could enable direct disk→VRAM path, removing the RAM staging step for some transfers. Alternative to CPU-mediated DMA.
 - Evaluations
