@@ -81,10 +81,10 @@ Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses the second-lev
 
 **Index storage strategy:**
 
-| Component | Size (example: 1B vectors, 1000d) | Location |
-|---|---|---|
-| Coarse centroids | ~115 × 1000d ≈ 0.5MB | RAM (always resident) |
-| Per-partition IVF centroids | ~3000 × 1000d ≈ 12MB/partition, ~1.4GB total | RAM; loaded to VRAM per pair |
+| Component | Location |
+|---|---|
+| Coarse centroids  | RAM |
+| D block indices |  RAM; loaded to VRAM per pair |
 | Vector data | ~35GB per partition | Disk; loaded on-demand via DMA |
 
 
