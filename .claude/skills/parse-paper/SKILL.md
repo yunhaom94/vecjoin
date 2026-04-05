@@ -109,11 +109,7 @@ The PDF source depends on how the paper was provided:
 - **Downloaded PDF** (from Step 3): `{project_root}/.tmp/<sanitized_title>.pdf`
 - **Local PDF** (user provided a file path): use the path as-is
 
-```bash
-markitdown "<pdf_path>" -o "{project_root}/Notes/Literatures/<sanitized_title>.md"
-```
-
-If `markitdown` is not installed, install it: `pip install 'markitdown[pdf]'`.
+Then, invoke `markitdown` skill to convert the PDF to markdown.
 
 If the title isn't known yet (local PDF with no prior metadata), use the PDF filename
 (minus extension) as a provisional name for the output `.md` file. After conversion,
