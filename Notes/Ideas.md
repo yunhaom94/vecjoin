@@ -79,6 +79,19 @@ Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses the second-lev
 - When a coarse pair (D_i, Q_j) is loaded into VRAM, Q_j's vectors are searched against D_i's index to generate candidate pairs. 
 - Finally, use GEMM to compute distances for candidates.
 
+
+- Second level index selection
+  - CAGRA: higher recall, more VRAM usage, very slow to build 
+    - Pre-build and store on RAM?
+  - IVF + PQ: faster to build, but is there a point at all (double k-means)
+- GEMM issue (AI suggestion, verify):
+
+If the fine-grained index prunes the search space (e.g., dropping 99% of possible comparisons), the resulting candidate pairs (d,q) will be highly unstructured. You can't just feed a sparse candidate list into a standard cublasGemm. We would either need:
+
+SDDMM (Sampled Dense-Dense Matrix Multiplication): Compute only the dot products where a candidate edge exists.
+Vector Gather: Gather the surviving query and database vectors into contiguous memory banks, which will likely bottleneck on VRAM bandwidth due to random reads, completely negating the Tensor Core speedup.
+
+
 **Index storage strategy:**
 
 | Component | Location |
@@ -90,6 +103,9 @@ Once a block pair (D_i, Q_j) is loaded into VRAM, the system uses the second-lev
 
 ### 3. CUDA and GPU Optimization
 Details TBD. Candidate per-partition index implementations: FAISS IVF-PQ, CAGRA (cuVS), IVF-RaBitQ (cuVS). flyKNNG's on-the-fly top-k during distance computation (avoids materializing full distance matrix) is relevant for the GPU kernel design.
+
+
+
 
 ## Minor Ideas
 *Minor ideas are supplementary concepts, features, writing points in the paper, or anything that is not directly related to one of the main ideas. This should be a list of any sizes that can be changed as the project evolves. Each idea should come with a detailed description.*
