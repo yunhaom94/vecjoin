@@ -446,3 +446,143 @@ This document contains a list of literatures that is relevant to this project. E
 - **Summary**: Studies the problem of scheduling a tree of tasks to minimize I/O when data exceeds memory capacity. Each task consumes input data and produces output data used by its parent; a task requires all its inputs in memory simultaneously. The scheduling problem -- choosing which task to execute next given limited memory -- is shown to be NP-hard in general. For tree-structured task graphs, they provide optimal polynomial-time algorithms based on the postorder traversal structure of the tree. The memory-constrained task scheduling formulation is structurally related to our edge ordering problem: both require choosing a processing order that keeps required data co-resident in limited fast memory. (Note: Full text was not available for download and conversion.)
 - **Relevance**:
 ---
+
+---
+- **Title**: Quake: Adaptive Indexing for Vector Search
+- **Author(s)**: Jason Mohoney, Devesh Sarda, Mengze Tang, Shihabur Rahman Chowdhury, Anil Pacaci, Ihab F. Ilyas, Theodoros Rekatsinas, Shivaram Venkataraman
+- **Year**: 2025
+- **Venue**: OSDI 2025
+- **Link**: https://www.usenix.org/conference/osdi25/presentation/mohoney
+- **Summary**: Presents an adaptive partitioned vector search index for dynamic and skewed workloads. The key system move is to make partition structure and query parameters react to changing access/update patterns via a cost model and recall estimator, while using NUMA-aware parallelism to improve memory bandwidth utilization.
+- **Relevance**: Strong precedent that vector search can be framed for OSDI when the contribution is workload adaptation, cost modeling, and hardware-aware execution rather than a standalone ANN algorithm.
+---
+
+---
+- **Title**: Achieving Low-Latency Graph-Based Vector Search via Aligning Best-First Search Algorithm with SSD
+- **Author(s)**: Hao Guo, Youyou Lu
+- **Year**: 2025
+- **Venue**: OSDI 2025
+- **Link**: https://www.usenix.org/conference/osdi25/presentation/guo
+- **Summary**: Introduces PipeANN, an on-disk graph ANNS system that bridges the latency gap between in-memory and SSD-resident search. It characterizes a mismatch between best-first graph search and SSD behavior, then relaxes strict compute-I/O ordering with asynchronous pipelined search and dynamic pipeline-width control.
+- **Relevance**: Closest template for arguing that an algorithmic dependency pattern can be reinterpreted to match storage hardware. Our join schedule can use a similar "algorithm-hardware mismatch" story, but for known bipartite join graphs instead of online graph traversal.
+---
+
+---
+- **Title**: Disentangling Graph Dependencies for Efficient Billion-Scale GPU Vector Search
+- **Author(s)**: Haoru Zhao, Jingkai He, Jingyao Zeng, Mingkai Dong, Dong Du
+- **Year**: 2026
+- **Venue**: OSDI 2026
+- **Link**: https://www.usenix.org/conference/osdi26/presentation/zhao
+- **Summary**: Presents FlowANN, a GPU graph ANNS system for billion-scale search under limited GPU memory. The paper reframes graph traversal from step-level dependencies to node-level discovery/expansion dependencies, enabling tiered graph placement and asynchronous CPU-GPU transfers that overlap edge fetching with GPU computation.
+- **Relevance**: Very relevant for the OSDI version of our work: it shows how to turn dependency analysis into a tiered GPU memory system. Our analogue is to exploit the known join graph to separate data movement dependencies from GPU execution dependencies.
+---
+
+---
+- **Title**: The Clustering Strikes Back: Building Cost-Effective and High-Performance ANNS at Scale with Helmsman
+- **Author(s)**: Yuchen Huang, Baiteng Ma, Yiping Sun, Yang Shi, Xiao Chen, Xiaocheng Zhong, Zhiyong Wang, Yao Hu, Erci Xu, Chuliang Weng
+- **Year**: 2026
+- **Venue**: OSDI 2026
+- **Link**: https://www.usenix.org/conference/osdi26/presentation/huang-yuchen
+- **Summary**: Describes Helmsman, a production all-flash clustering-based ANNS system at RedNote. It combines an ANNS-oriented userspace storage stack, learned pruning adapted to top-k/query distributions, and GPU-accelerated index construction to replace huge in-DRAM graph deployments while preserving latency SLAs.
+- **Relevance**: Useful as an operational systems model: production pain, cost pressure, storage-stack redesign, and deployment evidence make a vector system compelling for OSDI.
+---
+
+---
+- **Title**: CoPilotIO: CPU as a Co-Pilot for GPU I/O to Free GPU Compute
+- **Author(s)**: Guanyi Chen, Qi Chen, Shu Yin, Jian Zhang
+- **Year**: 2026
+- **Venue**: OSDI 2026
+- **Link**: https://www.usenix.org/conference/osdi26/presentation/chen-guanyi
+- **Summary**: Proposes a GPU I/O engine where GPU kernels initiate on-demand I/O while CPU cores poll completions, avoiding the extremes of CPU-centric preloading and GPU-centric polling. It introduces a split submission/completion queue architecture, barrier-based synchronization, and adaptive CPU-GPU co-polling.
+- **Relevance**: Provides vocabulary and mechanisms for arguing about GPU I/O stalls. Our executor can borrow the broader point: limited GPU memory makes I/O orchestration part of the compute system, and GPU cycles should be spent on join computation rather than I/O bookkeeping.
+---
+
+---
+- **Title**: Strata: Hierarchical Context Caching for Long Context Language Model Serving
+- **Author(s)**: Zhiqiang Xie, Ziyi Xu, Mark Zhao, Yuwei An, Vikram Sharma Mailthody, Scott Mahlke, Michael Garland, Christos Kozyrakis
+- **Year**: 2026
+- **Venue**: OSDI 2026
+- **Link**: https://www.usenix.org/conference/osdi26/presentation/xie-zhiqiang
+- **Summary**: Presents a hierarchical cache for long-context LLM serving across GPU HBM, CPU memory, and SSDs. It identifies fragmented layouts, cache-loading stalls, and cache-unaware scheduling as bottlenecks, then combines GPU-assisted I/O with cache-aware request scheduling to hide transfer latency.
+- **Relevance**: Strong analogy for our disk/RAM/VRAM hierarchy. Strata shows that a multi-tier caching paper becomes systems-worthy when it couples layout, I/O path, and scheduler instead of treating caching as a standalone heuristic.
+---
+
+---
+- **Title**: Massively Parallel Multi-Versioned Transaction Processing
+- **Author(s)**: Shujian Qian, Ashvin Goel
+- **Year**: 2024
+- **Venue**: OSDI 2024
+- **Link**: https://www.usenix.org/conference/osdi24/presentation/qian
+- **Summary**: Introduces Epic, a GPU-based deterministic OLTP database. By using batched transactions with known read/write sets and a predetermined order, it eliminates version search and reduces version allocation and garbage collection overhead, then uses GPU parallelism for concurrency-control initialization and execution.
+- **Relevance**: Perhaps the cleanest conceptual predecessor for our story: known future information lets a system replace expensive dynamic mechanisms with a compiled execution plan.
+---
+
+---
+- **Title**: Tigon: A Distributed Database for a CXL Pod
+- **Author(s)**: Yibo Huang, Haowei Chen, Newton Ni, Yan Sun, Vijay Chidambaram, Dixin Tang, Emmett Witchel
+- **Year**: 2025
+- **Venue**: OSDI 2025
+- **Link**: https://www.usenix.org/conference/osdi25/presentation/huang-yibo
+- **Summary**: Builds a distributed in-memory transactional database around CXL shared memory. Tigon separates synchronization-heavy metadata from tuple data, uses limited hardware-coherent CXL memory selectively, and designs software coherence and transaction protocols around CXL limitations.
+- **Relevance**: A DB system accepted at OSDI because it explicitly co-designs database structures with emerging memory hardware. This supports framing our work as a co-design of join semantics with GPU/SSD memory hierarchy.
+---
+
+---
+- **Title**: Motor: Enabling Multi-Versioning for Distributed Transactions on Disaggregated Memory
+- **Author(s)**: Ming Zhang, Yu Hua, Zhijun Yang
+- **Year**: 2024
+- **Venue**: OSDI 2024
+- **Link**: https://www.usenix.org/conference/osdi24/presentation/zhang-ming
+- **Summary**: Redesigns MVCC for disaggregated memory. Instead of linked version chains that require many remote round trips, Motor stores versions in consecutive version tuples and uses a one-sided RDMA MVCC protocol to reduce remote access overhead.
+- **Relevance**: Useful precedent for arguing that a database abstraction must be redesigned when the underlying memory access model changes. Our vector join similarly changes when the bottleneck becomes SSD/RAM/VRAM movement.
+---
+
+---
+- **Title**: Noria: Dynamic, Partially-Stateful Data-Flow for High-Performance Web Applications
+- **Author(s)**: Jon Gjengset, Malte Schwarzkopf, Jonathan Behrens, Lara Timbo Araujo, Martin Ek, Eddie Kohler, M. Frans Kaashoek, Robert Morris
+- **Year**: 2018
+- **Venue**: OSDI 2018
+- **Link**: https://www.usenix.org/conference/osdi18/presentation/gjengset
+- **Summary**: Presents a partially-stateful data-flow model that compiles relational schemas and parameterized queries into incrementally maintained data-flow graphs. It supports on-demand state reconstruction and live query/schema changes to avoid the state explosion of fully materialized views.
+- **Relevance**: Shows how to sell a DB/dataflow idea to OSDI by turning query semantics into a runtime abstraction with explicit state management and operational benefits.
+---
+
+---
+- **Title**: Dynamic Query Re-Planning using QOOP
+- **Author(s)**: Kshiteej Mahajan, Mosharaf Chowdhury, Aditya Akella, Shuchi Chawla
+- **Year**: 2018
+- **Venue**: OSDI 2018
+- **Link**: https://www.usenix.org/conference/osdi18/presentation/mahajan
+- **Summary**: Argues for dynamic query re-planning in data analytics clusters. QOOP refactors the interface between query planner, execution engine, and cluster scheduler so that jobs can switch query execution plans in response to resource changes.
+- **Relevance**: Relevant for the "planner-runtime interface" angle. Our OSDI story should likewise define what information the vector join planner exposes to the execution/runtime layers and why existing interfaces are too early-bound or too local.
+---
+
+---
+- **Title**: Sharding the Shards: Managing Datastore Locality at Scale with Akkio
+- **Author(s)**: Muthukaruppan Annamalai, Kaushik Ravichandran, Harish Srinivas, Igor Zinkovsky, Luning Pan, Tony Savor, David Nagle, Michael Stumm
+- **Year**: 2018
+- **Venue**: OSDI 2018
+- **Link**: https://www.usenix.org/conference/osdi18/presentation/annamalai
+- **Summary**: Describes Akkio, a production locality-management layer for geo-distributed datastores. Its key abstraction is the micro-shard, which gives the system a finer migration unit than datastore shards while remaining transparent to applications and portable across backend stores.
+- **Relevance**: Useful for partition granularity arguments. Our vector blocks need to be first-class scheduling/migration units, much like Akkio's micro-shards, rather than incidental chunks chosen only by storage layout.
+---
+
+---
+- **Title**: MapReduce: Simplified Data Processing on Large Clusters
+- **Author(s)**: Jeffrey Dean, Sanjay Ghemawat
+- **Year**: 2004
+- **Venue**: OSDI 2004
+- **Link**: https://www.usenix.org/conference/osdi-04/mapreduce-simplified-data-processing-large-clusters
+- **Summary**: Introduces the MapReduce programming model and runtime for large-scale data processing. It hides data partitioning, scheduling, fault tolerance, and communication behind a restricted but widely useful abstraction.
+- **Relevance**: Classic OSDI data-processing template: identify a broad class of simple computations that become hard only because of distribution/scheduling/fault tolerance, then provide a runtime abstraction that makes them scalable.
+---
+
+---
+- **Title**: Speedy Transactions in Multicore In-Memory Databases
+- **Author(s)**: Stephen Tu, Wenting Zheng, Eddie Kohler, Barbara Liskov, Samuel Madden
+- **Year**: 2013
+- **Venue**: SOSP 2013
+- **Link**: https://dl.acm.org/doi/10.1145/2517349.2522713
+- **Summary**: Presents Silo, an in-memory multicore OLTP database that avoids centralized contention points and uses a scalable optimistic commit protocol with epoch-based logging. It demonstrates how transaction systems can be restructured around modern multicore memory/cache behavior.
+- **Relevance**: Not OSDI, but a useful systems/DB precedent for the "remove central bottlenecks by rethinking protocol around hardware behavior" pattern.
+---
