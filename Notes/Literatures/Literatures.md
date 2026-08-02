@@ -378,7 +378,7 @@ This document contains a list of literatures that is relevant to this project. E
 - **Year**: 2025
 - **Venue**: Proc. ACM Manag. Data 3, 3 (SIGMOD), Article 158 (June 2025)
 - **Summary**: Proposes SimJoin, a new approximate ε-similarity join algorithm that departs from selection-based approaches (which treat each query point as an independent range query). Two core contributions: (1) *join window sliding* — reuses join results of processed points by sliding along an adjacent graph (approximated by a proximity graph like NSG) over Y, exploiting overlap between consecutive join windows; (2) *join window order selection* — optimizes the processing order of X points via MST on an ε-neighbor graph over X ∪ {y₀}, minimizing total sliding cost. Achieves 10x+ speedup over VBase and XJoin at 0.99+ recall on datasets up to 11M vectors (single-threaded CPU). Also extends to k-similarity join and proximity graph index maintenance via join window sliding.
-- **Relevance**: Within bucket join computation optmize, direclty compete to our index x clustering based solution. But it is CPU only. And probably will not work for GPU.
+- **Relevance**: Directly relevant to within-bucket join computation and a likely algorithmic competitor to our index-plus-clustering design. It is CPU-oriented, and its sequential join-window sliding may map poorly to GPU execution.
 ---
 
 ---
@@ -585,4 +585,206 @@ This document contains a list of literatures that is relevant to this project. E
 - **Link**: https://dl.acm.org/doi/10.1145/2517349.2522713
 - **Summary**: Presents Silo, an in-memory multicore OLTP database that avoids centralized contention points and uses a scalable optimistic commit protocol with epoch-based logging. It demonstrates how transaction systems can be restructured around modern multicore memory/cache behavior.
 - **Relevance**: Not OSDI, but a useful systems/DB precedent for the "remove central bottlenecks by rethinking protocol around hardware behavior" pattern.
+---
+
+## Batch-Streaming Vector Search / Join Addendum
+
+---
+- **Title**: VStream: A Distributed Streaming Vector Search System
+- **Author(s)**: Shenghao Gong, Haobo Sun, Ziquan Fang, Liu Liu, Lu Chen, Yunjun Gao
+- **Year**: 2025
+- **Venue**: PVLDB 2025
+- **Link**: https://www.vldb.org/pvldb/vol18/p1593-gao.pdf
+- **Summary**: Integrates vector search into a streaming processing engine instead of treating a vector database as an external service. Uses dynamic vector partitioning, streaming state backed by multiple storage levels, vector compression, and hot/cold separation to support continuous vector search workloads.
+- **Relevance**: Closest streaming vector-search system neighbor. It validates the need for vector search inside stream-processing pipelines, but it serves search queries over a stream rather than compiling a many-to-many vector join graph for GPU execution.
+---
+
+---
+- **Title**: FreshDiskANN: A Fast and Accurate Graph-Based ANN Index for Streaming Similarity Search
+- **Author(s)**: Aditi Singh, Suhas Jayaram Subramanya, Ravishankar Krishnaswamy, Harsha Vardhan Simhadri
+- **Year**: 2021
+- **Venue**: arXiv preprint
+- **Link**: https://arxiv.org/abs/2105.09613
+- **Summary**: Extends SSD-resident graph ANN search to streaming updates. It supports inserts, deletes, and searches using a mutable update path and background consolidation so the index remains fresh without full rebuilds.
+- **Relevance**: Foundational fresh/on-disk ANN paper. It motivates streaming similarity search over evolving corpora, but its abstraction is still single-query search over an evolving index, not vector similarity join.
+---
+
+---
+- **Title**: SPFresh: Incremental In-Place Update for Billion-Scale Vector Search
+- **Author(s)**: (See paper for full author list)
+- **Year**: 2023
+- **Venue**: SOSP 2023
+- **Link**: https://www.microsoft.com/en-us/research/publication/spfresh-incremental-in-place-update-for-billion-scale-vector-search/
+- **Summary**: Provides in-place incremental updates for billion-scale vector search using a lightweight rebalancing protocol over partitioned vector data. It avoids expensive full index rebuilds while preserving search quality under insertions and distribution changes.
+- **Relevance**: Strong systems precedent for dynamic partitioned vector indexes and distribution drift. Our streaming join can cite SPFresh as evidence that freshness and adaptive partitioning matter, while emphasizing that join scheduling and GPU out-of-core execution are different problems.
+---
+
+---
+- **Title**: In-Place Updates of a Graph Index for Streaming Approximate Nearest Neighbor Search
+- **Author(s)**: Haike Xu, Magdalen Dobson Manohar, Philip A. Bernstein, Badrish Chandramouli, Richard Wen, Harsha Vardhan Simhadri
+- **Year**: 2025
+- **Venue**: arXiv preprint
+- **Link**: https://arxiv.org/abs/2502.13826
+- **Summary**: Studies in-place insertions and deletions for graph ANN indexes, avoiding update buffers and large batch merges. The paper targets stable search performance for continuously changing vector datasets.
+- **Relevance**: Useful follow-up to FreshDiskANN for dynamic graph-index maintenance. It is related to freshness, but not to many-to-many join execution.
+---
+
+---
+- **Title**: OdinANN: Direct Insert for Consistently Stable Performance in Billion-Scale Graph-Based Vector Search
+- **Author(s)**: Hao Guo, Youyou Lu
+- **Year**: 2026
+- **Venue**: FAST 2026
+- **Link**: https://www.usenix.org/conference/fast26/presentation/guo
+- **Summary**: Proposes direct insertion into an on-disk graph ANN index to avoid the latency and throughput oscillations caused by buffering and periodic merge-based update paths.
+- **Relevance**: Another important fresh/on-disk ANN neighbor. It strengthens the claim that production vector systems need stable update behavior, while leaving open the join-wide scheduling problem.
+---
+
+---
+- **Title**: SIVF: GPU-Resident IVF Index for Streaming Vector Search
+- **Author(s)**: Dongfang Zhao
+- **Year**: 2026
+- **Venue**: arXiv preprint
+- **Link**: https://arxiv.org/abs/2601.11808
+- **Summary**: Presents a mutable GPU-resident IVF index for streaming vector search, using slab allocation and coalesced search over non-contiguous lists to support high-rate insertions and deletions.
+- **Relevance**: Relevant to GPU-resident mutable per-partition indexes. It does not address SSD-to-HBM scheduling or vector join graphs, but its memory-management ideas may inform per-partition index maintenance.
+---
+
+---
+- **Title**: SVFusion: A CPU-GPU Co-Processing Architecture for Large-Scale Real-Time Vector Search
+- **Author(s)**: (See paper for full author list)
+- **Year**: 2026
+- **Venue**: PVLDB 2026
+- **Link**: https://arxiv.org/abs/2601.08528
+- **Summary**: Designs a CPU/GPU/disk collaborative real-time vector search system with hierarchical indexing, workload-aware GPU caching, CUDA multi-stream coordination, adaptive resource management, and consistency under interleaved queries and updates.
+- **Relevance**: Close hardware/runtime neighbor for streaming vector search with GPU memory constraints. It remains search-serving oriented and does not exploit all-pairs join reuse.
+---
+
+---
+- **Title**: A Real-Time Adaptive Multi-Stream GPU System for Online Approximate Nearest Neighborhood Search
+- **Author(s)**: Yiping Sun, Yang Shi, Jiaolong Du
+- **Year**: 2024
+- **Venue**: CIKM 2024
+- **Link**: https://arxiv.org/abs/2408.02937
+- **Summary**: Builds a GPU ANN system for online insertion and search using block-based insertion and CUDA multi-stream execution to improve real-time throughput.
+- **Relevance**: Useful for GPU concurrency under interleaved search and insertion. The limitation for our work is that it does not model a batch join graph or cross-query data-movement reuse.
+---
+
+---
+- **Title**: Slipstream: Locality-Aware Graph Index Construction for Streaming Approximate Nearest Neighbor Search
+- **Author(s)**: Shubing Yang, Dongfang Zhao
+- **Year**: 2026
+- **Venue**: arXiv preprint
+- **Link**: https://arxiv.org/abs/2606.02992
+- **Summary**: Exploits temporal locality in vector streams by warm-starting graph-index insertions from candidates produced for prior inserted vectors.
+- **Relevance**: Useful evidence that real vector streams contain temporal locality. Our system tries to exploit a related locality source at the block/cache level across rolling join batches.
+---
+
+---
+- **Title**: Discretized Streams: Fault-Tolerant Streaming Computation at Scale
+- **Author(s)**: Matei Zaharia, Tathagata Das, Haoyuan Li, Timothy Hunter, Scott Shenker, Ion Stoica
+- **Year**: 2013
+- **Venue**: SOSP 2013
+- **Link**: https://dl.acm.org/doi/10.1145/2517349.2522737
+- **Summary**: Introduces D-Streams, the execution model behind Spark Streaming. It represents a stream as deterministic micro-batches, enabling lineage-based recovery and scalable low-latency execution.
+- **Relevance**: Primary precedent for the micro-batch model. Our batch-streaming vector join can cite D-Streams for stream-as-batches semantics, while emphasizing that our contribution is vector-access-graph compilation inside each batch.
+---
+
+---
+- **Title**: Structured Streaming: A Declarative API for Real-Time Applications in Apache Spark
+- **Author(s)**: Michael Armbrust et al.
+- **Year**: 2018
+- **Venue**: SIGMOD 2018
+- **Link**: https://dl.acm.org/doi/10.1145/3183713.3190664
+- **Summary**: Provides a declarative streaming API that incrementalizes DataFrame/SQL queries and unifies batch and streaming computation under the Spark programming model.
+- **Relevance**: Useful for motivating unified batch/stream semantics. It targets relational state and operators, not high-dimensional vector indexes or GPU out-of-core scheduling.
+---
+
+---
+- **Title**: MillWheel: Fault-Tolerant Stream Processing at Internet Scale
+- **Author(s)**: Tyler Akidau et al.
+- **Year**: 2013
+- **Venue**: PVLDB 2013
+- **Link**: https://research.google.com/pubs/pub41378.html
+- **Summary**: Presents a low-latency stream-processing system with persistent per-key state, logical time, timers, and fault tolerance.
+- **Relevance**: Important background for event-time and durable streaming state. It does not address vector partition placement or GPU execution.
+---
+
+---
+- **Title**: The Dataflow Model: A Practical Approach to Balancing Correctness, Latency, and Cost in Massive-Scale, Unbounded, Out-of-Order Data Processing
+- **Author(s)**: Tyler Akidau et al.
+- **Year**: 2015
+- **Venue**: PVLDB 2015
+- **Link**: https://research.google.com/pubs/pub43864.html
+- **Summary**: Formalizes event time, windowing, triggers, and accumulation modes for unbounded out-of-order streams.
+- **Relevance**: Useful if the paper introduces windows, late data, or result updates. It gives stream semantics, not vector-system physical planning.
+---
+
+---
+- **Title**: Naiad: A Timely Dataflow System
+- **Author(s)**: Derek G. Murray et al.
+- **Year**: 2013
+- **Venue**: SOSP 2013
+- **Link**: https://www.microsoft.com/en-us/research/publication/naiad-a-timely-dataflow-system-2/
+- **Summary**: Introduces timely dataflow, a cyclic data-parallel model with logical timestamps that supports batch, streaming, iterative, and incremental computation.
+- **Relevance**: Background for dynamic/incremental dataflow. It does not model vector similarity access graphs or GPU/SSD/HBM scheduling.
+---
+
+---
+- **Title**: Differential Dataflow
+- **Author(s)**: Frank McSherry, Derek G. Murray, Rebecca Isaacs, Michael Isard
+- **Year**: 2013
+- **Venue**: CIDR 2013
+- **Link**: https://www.cidrdb.org/cidr2013/Papers/CIDR13_Paper111.pdf
+- **Summary**: Maintains collections indexed by logical timestamps and differences, enabling efficient incremental recomputation for changing inputs.
+- **Relevance**: Conceptual precedent for reusing prior computation across changing inputs. For vector joins, the expensive state is not just relational tuples but high-dimensional partitions, vector indexes, candidate graphs, and GPU buffers.
+---
+
+---
+- **Title**: DBToaster: Higher-Order Delta Processing for Dynamic, Frequently Fresh Views
+- **Author(s)**: Christoph Koch et al.
+- **Year**: 2011
+- **Venue**: VLDB/PVLDB line of work
+- **Link**: https://dl.acm.org/doi/10.14778/2002938.2002944
+- **Summary**: Uses higher-order deltas to incrementally maintain query results under frequent updates.
+- **Relevance**: Background for incremental materialized views. It does not model high-dimensional vector similarity cost, approximate recall, or GPU/disk scheduling.
+---
+
+---
+- **Title**: SWOOP: Top-k Similarity Joins over Set Streams
+- **Author(s)**: (See paper for full author list)
+- **Year**: 2024
+- **Venue**: VLDB Journal
+- **Link**: https://link.springer.com/article/10.1007/s00778-024-00880-x
+- **Summary**: Studies continuous top-k set similarity joins over sliding windows and maintains candidate pairs so expired pairs can be replaced efficiently.
+- **Relevance**: Useful for streaming join semantics such as result expiration and replacement. It targets set similarity and CPU-style state maintenance rather than dense vector embeddings and GPU out-of-core execution.
+---
+
+---
+- **Title**: Distributed Stream KNN Join
+- **Author(s)**: Amirhesam Shahvarani, Hans-Arno Jacobsen
+- **Year**: 2021
+- **Venue**: SIGMOD 2021
+- **Link**: https://portal.fis.tum.de/en/publications/distributed-stream-knn-join
+- **Summary**: Presents an adaptive scalable stream kNN join for highly dynamic streams, using a multi-stage execution plan that overlaps computation and communication with adaptive partitioning.
+- **Relevance**: Direct streaming kNN join precedent. The gap is that it is a distributed stream-query system, not a high-dimensional vector-embedding join over SSD/DRAM/HBM and GPUs.
+---
+
+---
+- **Title**: Efficient Continuous kNN Join over Dynamic High-Dimensional Data
+- **Author(s)**: (See paper for full author list)
+- **Year**: 2023
+- **Venue**: World Wide Web
+- **Link**: https://link.springer.com/article/10.1007/s11280-023-01204-9
+- **Summary**: Studies continuous kNN join over dynamic high-dimensional data with insertions, deletions, batch updates, and sliding windows.
+- **Relevance**: Closest algorithmic high-dimensional dynamic kNN join line. It is not a billion-scale GPU/SSD vector join runtime.
+---
+
+---
+- **Title**: SemDeDup: Data-efficient Learning at Web-scale through Semantic Deduplication
+- **Author(s)**: Amro Abbas et al.
+- **Year**: 2023
+- **Venue**: arXiv preprint
+- **Link**: https://arxiv.org/abs/2303.09540
+- **Summary**: Uses embeddings to identify semantic duplicates in web-scale training data and shows that semantic deduplication can reduce training data while preserving model quality.
+- **Relevance**: Best use-case citation for continuous semantic dedup/corpus hygiene. It motivates threshold-style vector join output: duplicate pairs or groups, not just independent nearest-neighbor search answers.
 ---
