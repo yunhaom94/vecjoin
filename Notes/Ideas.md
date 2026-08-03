@@ -83,6 +83,15 @@ Execution options:
 
 Open design tension: aggressive fine-grained pruning can create irregular candidate lists that are hard to feed into GEMM/Tensor Cores efficiently.
 
+SimJoin-inspired reuse-aware indexed mode:
+
+- compile a shallow proximity forest over each `Q_j` once; reuse the forest across all matched `D_i` partitions;
+- for each resident `D_i`, search forest roots from the local graph entry point, then process ready children in GPU frontier batches;
+- seed each child with compact `D_i`-local state, preferably the closest visited point/top-r seeds rather than the full parent window (soft work sharing);
+- group siblings with overlapping frontiers into shared candidate slabs: dense microtiles/GEMM for high overlap, gather/SDDMM for low overlap;
+- cut long forest edges, cap depth/window state, and fall back to the local entry point or dense scan for empty seeds, large windows, OOD queries, or high candidate density;
+- keep this as the inner `(D_i, Q_j)` executor; the outer access-graph schedule still prioritizes SSD/DRAM/HBM movement.
+
 ### 5. Streaming State and Freshness
 The streaming extension carries useful state across batches.
 
@@ -157,6 +166,8 @@ Metrics:
 - If GDS is unavailable, the paper can still work with pinned-memory staging, but the executor must clearly show where the bottleneck is and what the schedule controls.
 - If result selectivity is high, output can dominate. Result buffering/backpressure must be part of the system, not an afterthought.
 - If scheduler optimality is hard, provide lower bounds and trace simulation rather than overclaiming.
+- Literal SimJoin is a poor GPU mapping: deep MST dependencies, priority queues, and ragged windows reduce occupancy. The contribution must be GPU-aware bounded-depth work sharing plus adaptive dense/sparse execution, not merely "SimJoin on GPU."
+- SimJoin-style graph traversal is approximate and may miss disconnected in-range components. Preserve exact dense execution when exactness is required; retain local-entry/hybrid fallbacks and report recall for indexed mode.
 
 
 ## Foundations
@@ -176,6 +187,8 @@ In the batch-streaming version, the input is a sequence of query/update batches 
 
 **Vector similarity join systems** such as DiskJoin, SimJoin, and XJoin/Xling are closest algorithmically. DiskJoin is the direct static system predecessor because it exposes a bucket graph and uses graph ordering plus Belady caching, but it is CPU-only and does not handle rolling batches, HBM scheduling, or GPU result pipelines.
 
+**SimJoin-style work sharing** orders queries with a proximity-graph MST and seeds a child search from its parent's result window. For GPU execution, use a bounded-depth forest and batch ready siblings/frontiers rather than a serial tree walk. Prefer compact soft seeds as in *Fast Approximate Vector Joins via Offline-Online Co-Design* (2026), which avoids empty-window and large-window pathologies. These methods optimize in-memory fine search, not out-of-core block scheduling.
+
 **Streaming and fresh vector systems** such as VStream, FreshDiskANN, SPFresh, IP-DiskANN, OdinANN, SIVF, SVFusion, RTAMS-GANNS, and Slipstream address dynamic ingestion, index updates, or vector search inside stream processing. They motivate freshness and temporal locality, but they maintain search indexes rather than compile micro-batch join graphs.
 
 **Stream/dataflow systems** such as D-Streams/Spark Streaming, Structured Streaming, MillWheel, Dataflow, Naiad, Differential Dataflow, Noria, and DBToaster provide micro-batch, event-time, state, and incremental-computation semantics. They do not understand vector-similarity access graphs or GPU/SSD/HBM scheduling.
@@ -192,4 +205,3 @@ Concrete gaps:
 - **No three-tier join scheduler:** existing vector search systems do not manage `D` blocks, `Q` blocks, per-partition indexes, and result buffers together across SSD, DRAM, and HBM.
 - **No batch-streaming vector join abstraction:** existing streaming vector systems optimize search or index freshness, not join output over a known micro-batch graph.
 - **No join-aware GPU execution plan:** existing GPU ANN systems build one global index or optimize independent query batches; they do not coordinate partition layout, prefetch, eviction, and GPU kernels around a join graph.
-
