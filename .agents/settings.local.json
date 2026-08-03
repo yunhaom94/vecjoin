@@ -1,0 +1,9 @@
+{
+  "env": {
+    "S2_API_KEY": "T7IlOFP0P824Xa1nVqiSU1jMFOYcFHrl2aPG9WcW"
+  },
+  "enabledMcpjsonServers": [
+    "drawio"
+  ],
+  "enableAllProjectMcpServers": true
+}
