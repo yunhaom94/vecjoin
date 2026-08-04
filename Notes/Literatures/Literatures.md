@@ -51,9 +51,10 @@ This document contains a list of literatures that is relevant to this project. E
 - **Title**: High-Throughput, Cost-Effective Billion-Scale Vector Search with a Single GPU (GustANN)
 - **Author(s)**: Haodi Jiang, Hao Guo, Minhui Xie, Jiwu Shu, Youyou Lu
 - **Year**: 2025
-- **Venue**: SIGMOD 2025 (Proc. ACM Manag. Data)
-- **Summary**: Proposes GustANN, a GPU-centric, CPU-assisted architecture for billion-scale graph-based vector search using GPU+SSD. Key techniques: (1) memory-efficient GPU kernels that minimize VRAM usage during graph search, allowing higher concurrency for GPU and SSD access; (2) CPU-assisted transfer to address the PCIe bandwidth bottleneck on the GPU side; (3) pivot search for inter-SSD load balancing across multiple NVMe drives. Achieves at least 2.50x higher throughput than existing ANNS systems and is 2.62x more cost-effective (measured in $/QPS). (Note: Full text PDF was not available for download.)
-- **Relevance**: Highly relevant as it addresses the same GPU+SSD architecture for billion-scale vector workloads. GustANN's memory-efficient GPU kernels and CPU-assisted PCIe transfer directly inform our VRAM budget management and data movement pipeline. Their approach of maximizing GPU concurrency while managing limited VRAM is analogous to our challenge of fitting partition data, indexes, and result buffers within VRAM.
+- **Venue**: SIGMOD 2026 (Proc. ACM Manag. Data 3, 6; published December 2025)
+- **Link**: https://minhui-xie.github.io/papers/sigmod26-GustANN.pdf
+- **Summary**: Proposes GustANN, a GPU-centric, CPU-assisted architecture for billion-scale graph-based vector search using GPU+SSD. Key techniques: (1) memory-efficient GPU kernels that minimize VRAM usage during graph search, allowing higher concurrency for GPU and SSD access; (2) CPU-assisted transfer to address the PCIe bandwidth bottleneck on the GPU side; (3) pivot search for inter-SSD load balancing across multiple NVMe drives. Achieves at least 2.50x higher throughput than existing ANNS systems and is 2.62x more cost-effective (measured in $/QPS).
+- **Relevance**: Highly relevant to the same GPU+SSD data-movement problem. GustANN is also a counterexample to a rigid DB/systems boundary: a SIGMOD paper can use an OSDI-like workload-hardware mismatch, cross-layer architecture, resource analysis, and cost/latency evaluation. Its kernels, CPU-assisted transfer, and multi-SSD scheduling inform our VRAM and data-movement design without implying a venue-specific component checklist.
 ---
 
 ---
@@ -454,7 +455,7 @@ This document contains a list of literatures that is relevant to this project. E
 - **Venue**: OSDI 2025
 - **Link**: https://www.usenix.org/conference/osdi25/presentation/mohoney
 - **Summary**: Presents an adaptive partitioned vector search index for dynamic and skewed workloads. The key system move is to make partition structure and query parameters react to changing access/update patterns via a cost model and recall estimator, while using NUMA-aware parallelism to improve memory bandwidth utilization.
-- **Relevance**: Strong precedent that vector search can be framed for OSDI when the contribution is workload adaptation, cost modeling, and hardware-aware execution rather than a standalone ANN algorithm.
+- **Relevance**: Strong precedent that algorithmic contributions can anchor an OSDI vector paper. Its fit comes from how dynamic/skewed workloads, cost modeling, recall stability, and NUMA execution are framed and evaluated—not from an absence of algorithms.
 ---
 
 ---
@@ -474,7 +475,7 @@ This document contains a list of literatures that is relevant to this project. E
 - **Venue**: OSDI 2026
 - **Link**: https://www.usenix.org/conference/osdi26/presentation/zhao
 - **Summary**: Presents FlowANN, a GPU graph ANNS system for billion-scale search under limited GPU memory. The paper reframes graph traversal from step-level dependencies to node-level discovery/expansion dependencies, enabling tiered graph placement and asynchronous CPU-GPU transfers that overlap edge fetching with GPU computation.
-- **Relevance**: Very relevant for the OSDI version of our work: it shows how to turn dependency analysis into a tiered GPU memory system. Our analogue is to exploit the known join graph to separate data movement dependencies from GPU execution dependencies.
+- **Relevance**: Very relevant to a resource-centric framing of our work: it shows how dependency analysis can drive a tiered GPU memory design. Our analogue is to exploit the known join graph to separate data-movement dependencies from GPU execution dependencies; this framing is useful but not exclusive to OSDI.
 ---
 
 ---
@@ -504,7 +505,7 @@ This document contains a list of literatures that is relevant to this project. E
 - **Venue**: OSDI 2026
 - **Link**: https://www.usenix.org/conference/osdi26/presentation/xie-zhiqiang
 - **Summary**: Presents a hierarchical cache for long-context LLM serving across GPU HBM, CPU memory, and SSDs. It identifies fragmented layouts, cache-loading stalls, and cache-unaware scheduling as bottlenecks, then combines GPU-assisted I/O with cache-aware request scheduling to hide transfer latency.
-- **Relevance**: Strong analogy for our disk/RAM/VRAM hierarchy. Strata shows that a multi-tier caching paper becomes systems-worthy when it couples layout, I/O path, and scheduler instead of treating caching as a standalone heuristic.
+- **Relevance**: Strong analogy for our disk/RAM/VRAM hierarchy and for closing a causal chain from layout, I/O, and scheduling to resource stalls and end-to-end performance. These mechanisms are useful evidence for our access-graph claim, not a mandatory systems-venue checklist.
 ---
 
 ---
@@ -524,7 +525,7 @@ This document contains a list of literatures that is relevant to this project. E
 - **Venue**: OSDI 2025
 - **Link**: https://www.usenix.org/conference/osdi25/presentation/huang-yibo
 - **Summary**: Builds a distributed in-memory transactional database around CXL shared memory. Tigon separates synchronization-heavy metadata from tuple data, uses limited hardware-coherent CXL memory selectively, and designs software coherence and transaction protocols around CXL limitations.
-- **Relevance**: A DB system accepted at OSDI because it explicitly co-designs database structures with emerging memory hardware. This supports framing our work as a co-design of join semantics with GPU/SSD memory hierarchy.
+- **Relevance**: Demonstrates the substantial overlap between DB and systems venues: database structures and emerging memory hardware can be presented through one cross-layer argument. It supports a join-semantics/GPU-SSD co-design framing without implying a rigid venue boundary.
 ---
 
 ---
@@ -544,7 +545,7 @@ This document contains a list of literatures that is relevant to this project. E
 - **Venue**: OSDI 2018
 - **Link**: https://www.usenix.org/conference/osdi18/presentation/gjengset
 - **Summary**: Presents a partially-stateful data-flow model that compiles relational schemas and parameterized queries into incrementally maintained data-flow graphs. It supports on-demand state reconstruction and live query/schema changes to avoid the state explosion of fully materialized views.
-- **Relevance**: Shows how to sell a DB/dataflow idea to OSDI by turning query semantics into a runtime abstraction with explicit state management and operational benefits.
+- **Relevance**: Shows that a DB/dataflow contribution can be organized around a runtime abstraction with explicit state management and operational benefits. This is a useful writing template, not evidence that DB and systems contributions are intrinsically different.
 ---
 
 ---
@@ -554,7 +555,7 @@ This document contains a list of literatures that is relevant to this project. E
 - **Venue**: OSDI 2018
 - **Link**: https://www.usenix.org/conference/osdi18/presentation/mahajan
 - **Summary**: Argues for dynamic query re-planning in data analytics clusters. QOOP refactors the interface between query planner, execution engine, and cluster scheduler so that jobs can switch query execution plans in response to resource changes.
-- **Relevance**: Relevant for the "planner-runtime interface" angle. Our OSDI story should likewise define what information the vector join planner exposes to the execution/runtime layers and why existing interfaces are too early-bound or too local.
+- **Relevance**: Relevant for the planner-runtime interface angle: define what information the vector join planner exposes to execution layers and why existing interfaces are too early-bound or too local. This can support either a DB or systems framing.
 ---
 
 ---

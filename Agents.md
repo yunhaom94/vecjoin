@@ -1,0 +1,1 @@
+Always read `Notes/Ideas.md` to understand the context of this project.

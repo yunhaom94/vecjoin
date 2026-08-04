@@ -68,7 +68,7 @@ Core mechanisms:
 - asynchronous result sink with bounded buffers so output does not stall compute;
 - instrumentation for SSD bandwidth, PCIe/H2D bandwidth, GPU utilization, cache hits, stalls, and result backpressure.
 
-The key systems claim is layout + scheduler + runtime together. A VRAM cache alone is not enough.
+The central claim is that access-graph compilation changes end-to-end multi-tier execution. Layout, I/O paths, caches, and runtime mechanisms support that claim; they are not a venue-driven component checklist. A VRAM cache alone would not test the access-graph hypothesis.
 
 ### 4. Join-Aware GPU Execution
 For each scheduled block pair `(D_i, Q_j)`, execute similarity join on GPU without materializing a dense `|D_i| x |Q_j|` distance matrix when possible.
@@ -126,11 +126,14 @@ Positioning sentence:
 
 > Prior vector search systems optimize how to find neighbors for one query stream; our system optimizes how to execute a known many-to-many vector workload over a memory hierarchy.
 
-OSDI lesson:
+Venue positioning (corrected):
 
-- Vector systems are compelling when they expose a systems mismatch: Quake for dynamic/skewed workloads, PipeANN for best-first search vs SSD behavior, FlowANN for graph-search dependencies vs GPU/HBM constraints, and Helmsman for production all-flash vector search.
-- Multi-tier GPU I/O papers such as CoPilotIO and Strata suggest that the contribution must combine layout, I/O path, cache-aware scheduling, and runtime execution.
-- DB/dataflow OSDI papers such as Epic, Noria, QOOP, Akkio, and MapReduce suggest defining a new system interface: "join graph as a future access trace" rather than merely "a new join operator."
+- **Correction:** The earlier judgment that GPU-AVSJ is not suitable for OSDI, and the associated fixed systems-component checklist, were wrong. The work is plausible for both OSDI and database venues.
+- **No algorithm/system boundary:** Quake and PipeANN are OSDI papers with algorithmic cores; DiskJoin, VStream, GustANN, and Tagore show that database venues also accept storage, runtime, GPU, and cross-layer system contributions.
+- **Same technical core, different emphasis:** A DB framing presents access-graph compilation as a vector-join physical algorithm/operator and leads with semantics, recall, runtime, I/O, and memory. An OSDI framing presents it as a bounded-future-trace execution mechanism and leads with data movement, stalls, utilization, and end-to-end execution.
+- **Main venue difference is writing/community fit:** first-page problem, vocabulary, related work and baselines, causal chain, and which evidence is foregrounded. Research object, claim boundary, and evaluation closure are largely choices made in writing, not immutable properties of the artifact.
+- **Writing still needs evidence:** framing cannot support claims absent from the results, but most core evidence is shared. Do not add streaming, SLOs, failure recovery, production deployment, or a fixed set of layout/I/O/cache/runtime components solely to look like OSDI.
+- **Actual gate for either venue:** show that independent ANN execution creates a consequential bottleneck and that access-graph compilation causally improves end-to-end execution across strong baselines, datasets, memory budgets, and hardware conditions.
 
 ### Evaluation Plan
 
@@ -161,7 +164,7 @@ Metrics:
 
 ### Risks
 
-- If the system is only a GPU distance kernel plus block loop, it is too close to an implementation optimization. The paper needs the access-graph compiler and multi-tier runtime story.
+- If the system is only a GPU distance kernel plus block loop, the novelty is weak for either venue. The paper needs a new access-graph/join-aware insight with causal end-to-end evidence; additional components are supporting mechanisms, not a venue checklist.
 - If the streaming story is only "new queries arrive," reviewers may reduce it to batch ANN. The use case must require join output: duplicate pairs, match groups, candidate edges, or relationship deltas.
 - If GDS is unavailable, the paper can still work with pinned-memory staging, but the executor must clearly show where the bottleneck is and what the schedule controls.
 - If result selectivity is high, output can dominate. Result buffering/backpressure must be part of the system, not an afterthought.
