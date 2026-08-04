@@ -15,48 +15,61 @@ Using GPUs to do approximate vector similarity join for large, high-dimensional 
 
 Single main line:
 
-> Build a batch-streaming, out-of-core GPU vector similarity join runtime for continuous semantic deduplication and corpus hygiene. Each micro-batch exposes a bounded future access graph; the runtime compiles that graph into cache, prefetch, GPU execution, and result-output decisions across SSD, DRAM, and HBM.
+> Build an out-of-core GPU vector similarity join runtime with exact and approximate modes for billion-scale `D`-`Q` datasets. After coarse pruning exposes the fully known set of surviving bipartite block-pair tasks, compile it into cache, prefetch, GPU execution, and result-output decisions across SSD, DRAM, and HBM.
 
-Static vector join is the per-batch execution primitive, not a separate project direction. Streaming vector search, fresh ANN indexes, and general stream processing are related work, not the main abstraction.
+Vector similarity join, not independent ANN queries, is the main abstraction. The system co-designs coarse partitioning, pruning, and scheduling with fine per-partition GPU search.
 
-### 1. Workload: Continuous Semantic Dedup and Corpus Hygiene
-Large AI/RAG systems continuously ingest documents, images, videos, code, chat memories, and chunks. Each new batch must be compared against a historical corpus and sometimes against itself to identify near-duplicates, redundant chunks, stale versions, or semantically equivalent records.
+### 1. Static Workload and Two-Level Design
+Given a database set `D` and a query set `Q` of high-dimensional vectors:
 
-- `D`: historical corpus, usually much larger than RAM/HBM.
-- `Q_t`: newly ingested embeddings in micro-batch `t`.
-- Output: duplicate/match pairs `(q, d)`, duplicate groups, or top-k candidate edges.
-- Time target: nearline batch completion, usually seconds to minutes rather than single-query milliseconds.
-- Streaming property: adjacent batches are often correlated by source, tenant, topic, crawler shard, user/session, or ingestion pipeline, creating cross-batch locality.
+- exact mode outputs all pairs `(d, q)` below epsilon or exact per-query top-k;
+- approximate mode outputs recall-measured threshold pairs or approximate per-query top-k; match/duplicate groups are derived from emitted pairs;
+- initial scale target: billions of approximately 1,000-dimensional FP32 vectors, about 4 KB per vector and 4 TB per billion vectors;
+- coarse level: independently cluster `D` and `Q`, then prune partition pairs with centroid-distance bounds before vector-block I/O;
+- fine level: use a per-`D_i` GPU index such as IVF/IVF-PQ, CAGRA, or IVF-RaBitQ to prune individual comparisons inside each surviving block pair.
 
-Why this is a join: semantic dedup needs all matching pairs/groups above a threshold, not only one nearest neighbor per incoming vector. A single-query ANN API can find candidates, but it misses the chance to coordinate data movement for thousands or millions of vectors known together.
+Why this is a join: the complete query set exposes reuse across many vectors and permits global data-movement scheduling. Independent ANN queries discard that opportunity.
 
 ### 2. Access-Graph Compiler
-After coarse partitioning and pruning, each batch becomes a bipartite access graph:
+Offline graph construction:
+
+- sample `D` and `Q` independently; cluster and assign vectors to their nearest centroid on CPU;
+- materialize each coarse partition contiguously on SSD;
+- tune `D`-block and `Q`-block sizes independently;
+- for metric threshold joins, safely prune `(D_i, Q_j)` when `dist(c_i, c_j) - r_i - r_j > epsilon`, using partition centroids `c` and radii `r`;
+- for top-k, compare the same lower bound with the current kth-distance upper bound; treat learned filters as approximate unless they provide a safe bound.
+
+The surviving work becomes a bipartite access graph:
 
 ```text
-G_t = (D_blocks, Q_t_blocks, E_t)
+G = (D_blocks, Q_blocks, E)
 ```
 
-Each edge `(D_i, Q_j)` is a block-pair task. This graph is a bounded future access trace: the system can know which blocks will be reused, when they will be reused, what should be prefetched, and when cached data can be evicted.
+Each edge `(D_i, Q_j)` is a block-pair task. The compiler linearizes the fully known graph into a finite access trace; that ordered trace exposes next use and reuse distance for prefetch and eviction.
 
-Compiler responsibilities:
+Compiler settings and responsibilities:
 
-- partition `D` and each `Q_t` into coarse blocks;
-- prune impossible or unlikely block pairs using centroid bounds and optional learned filters;
+- build/prune the graph and compile the schedule on CPU; keep pruning and scheduling implementations pluggable;
+- minimize weighted transfer cost across SSD-to-DRAM and DRAM-to-HBM under configured cache budgets; report block reload count as a simpler proxy;
 - order block-pair tasks to maximize reuse in DRAM and HBM;
-- use Belady-style future-aware eviction for a fixed trace;
-- extend scheduling across batches by preserving hot `D` blocks, recent `Q` blocks, and reusable per-partition index state.
+- derive prefetch decisions and use Belady-style future-aware eviction for a fixed trace.
 
 Candidate scheduling baselines:
 
-- row-major / block nested loop;
+- row-major / block nested loop, pinning `D` blocks while sweeping `Q` blocks;
 - random;
 - DiskJoin/Gorder-style graph ordering;
-- Reverse Cuthill-McKee over the bipartite block graph;
+- Reverse Cuthill-McKee node ordering with a deterministic incident-edge/task traversal;
 - oracle/Belady trace simulation.
 
 ### 3. Multi-Tier GPU Runtime
 The runtime executes the compiled schedule over SSD, DRAM, and GPU HBM.
+
+Initial object placement:
+
+- SSD: contiguous vector partitions and durable per-`D_i` index artifacts, fetched on demand;
+- DRAM: coarse centroids, access-graph/schedule metadata, victim blocks, and cached index artifacts when budget permits;
+- HBM: resident `D_i`/`Q_j` blocks, loaded index state, block cache, staging buffers, and result buffers.
 
 Core mechanisms:
 
@@ -66,20 +79,31 @@ Core mechanisms:
 - HBM block cache with future-aware eviction;
 - double buffering and multiple CUDA streams for load, compute, and output;
 - asynchronous result sink with bounded buffers so output does not stall compute;
+- per-pair GPU filter/select/compact, followed by host/sink merge, grouping, or ordering only when required; compare GPU finalization when output semantics justify it;
 - instrumentation for SSD bandwidth, PCIe/H2D bandwidth, GPU utilization, cache hits, stalls, and result backpressure.
+
+Primary tunables: `D`/`Q` block sizes, DRAM victim-cache budget, HBM cache budget and allocation across blocks/indexes/staging/results, transfer path, and result-buffer capacity.
 
 The central claim is that access-graph compilation changes end-to-end multi-tier execution. Layout, I/O paths, caches, and runtime mechanisms support that claim; they are not a venue-driven component checklist. A VRAM cache alone would not test the access-graph hypothesis.
 
 ### 4. Join-Aware GPU Execution
 For each scheduled block pair `(D_i, Q_j)`, execute similarity join on GPU without materializing a dense `|D_i| x |Q_j|` distance matrix when possible.
 
+Indexed path: search `Q_j` against `D_i`'s fine index, generate candidate pairs, compute candidate distances, then filter/select/compact results.
+
 Execution options:
 
-- exact threshold join with tiled streaming distance computation and immediate select/compact;
+- exact threshold join with tiled distance computation and immediate select/compact;
 - top-k join with on-the-fly selection, similar in spirit to flyKNNG;
-- approximate join using a per-partition index on `D_i` such as IVF, CAGRA, or IVF-RaBitQ;
+- approximate join using a pluggable per-partition index on `D_i` such as IVF/IVF-PQ, CAGRA, or IVF-RaBitQ;
 - SDDMM/gather-aware execution when candidate pairs are sparse;
 - adaptive switch between dense tile scan and indexed candidate mode based on candidate density.
+
+Fine-index settings:
+
+- co-tune index parameters and `D_i` size; small partitions may make the second index redundant;
+- compare recall, build time, HBM footprint, and candidate density across index families;
+- prebuild expensive graph indexes, cache/load them with `D_i`, and verify whether IVF/IVF-PQ adds enough pruning to justify a second clustering hierarchy.
 
 Open design tension: aggressive fine-grained pruning can create irregular candidate lists that are hard to feed into GEMM/Tensor Cores efficiently.
 
@@ -92,25 +116,16 @@ SimJoin-inspired reuse-aware indexed mode:
 - cut long forest edges, cap depth/window state, and fall back to the local entry point or dense scan for empty seeds, large windows, OOD queries, or high candidate density;
 - keep this as the inner `(D_i, Q_j)` executor; the outer access-graph schedule still prioritizes SSD/DRAM/HBM movement.
 
-### 5. Streaming State and Freshness
-The streaming extension carries useful state across batches.
-
-- Keep hot `D` partitions and their index metadata resident across batches when reuse is likely.
-- Keep recent `Q` partitions for within-window dedup, e.g. `Q_t x Q_{t-w:t-1}`.
-- Treat inserts/deletes to `D` as partition/index maintenance work, but do not make fresh ANN indexing the main contribution.
-- Schedule with freshness deadlines and output backpressure in mind.
-
-The main novelty is not only that new data arrives. It is that every micro-batch provides enough known future to compile a join plan, while the batch sequence provides locality and drift that a static join cannot use.
-
 
 ## Minor Ideas
 *Minor ideas are supplementary concepts, features, writing points in the paper, or anything that is not directly related to one of the main ideas. This should be a list of any sizes that can be changed as the project evolves. Each idea should come with a detailed description.*
 
+- **Streaming extension (side note):** Apply the static compiler to rolling `Q_t` micro-batches, each exposing a known graph for `Q_t x D`, optional `Q_t x Q_t`, and `Q_t x Q_{t-w:t-1}` joins. Target nearline completion in seconds to minutes; retain hot `D` partitions/index state and recent `Q` blocks; exploit source/tenant/topic/shard/session locality while handling drift; treat `D` inserts/deletes as maintenance; add freshness and output-backpressure constraints. This is an extension, not the main abstraction or contribution.
 - **Learned pruning filters:** XJoin/Xling-style learned filters could complement centroid-distance pruning by predicting whether a query block is likely to have enough matches in a database block.
 - **GPUDirect Storage:** BaM, CoPilotIO, and TERAIO show that GPU/SSD data paths can bypass or reduce CPU involvement. GDS is useful but should be an executor option, not the central novelty.
 - **Partition size tuning:** Smaller partitions improve coarse pruning but increase scheduling overhead and may weaken second-level indexes. Larger partitions improve transfer granularity but reduce pruning and may exceed HBM. The right point is workload/hardware dependent.
 - **Theoretical angle:** The block-pair schedule resembles a cache-aware traversal of a sparse bipartite graph. Possible foundations include Belady caching, reuse distance, Gorder, sparse tiling, and red-blue pebbling, but we should avoid overclaiming optimality.
-- **Secondary use cases:** RAG memory maintenance, content moderation, nearline recommendation candidate refresh, embedding-model migration, retrieval regression testing, and cross-corpus entity resolution are good supporting examples, but continuous semantic dedup/corpus hygiene should remain the flagship.
+- **Secondary use cases:** RAG memory maintenance, content moderation, nearline recommendation candidate refresh, embedding-model migration, retrieval regression testing, and cross-corpus entity resolution are good supporting examples, but semantic dedup/corpus hygiene should remain the flagship.
 
 
 ## Notes
