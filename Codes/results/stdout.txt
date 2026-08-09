@@ -653,3 +653,8 @@ LOOP	                    30.83 s	—	    30.83 s	—	    1.00×
 CUTE1 (1xTF32, mma.sync)	45.77 s	30.05 s	15.71 s	14.61 s	1.96×
 CUTE4 (3xTF32, mma.sync)	49.89 s	30.34 s	19.55 s	18.48 s	1.58×
 CUTE5 (1xTF32, wgmma)	    49.49 s	30.03 s	19.46 s	18.38 s	1.58×
+
+GPU	                LOOP    CUTE4	CUTE4 gain
+RTX 4090	        32.7 s	31.0 s	1.06×
+H100 SXM	        29.8 s	18.3 s	1.63×
+RTX PRO 6000 BSE	20.6 s	25.7 s	0.80×
