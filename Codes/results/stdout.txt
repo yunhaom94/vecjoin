@@ -648,18 +648,20 @@ Generated:
     "schedule_capacity": 50
 }
 
-Runtime:
+Measured runtime on H100:
 joiner	                    elapsed	verify	net	    gemm	vs LOOP
 LOOP	                    30.83 s	—	    30.83 s	—	    1.00×
 CUTE1 (1xTF32, mma.sync)	45.77 s	30.05 s	15.71 s	14.61 s	1.96×
 CUTE4 (3xTF32, mma.sync)	49.89 s	30.34 s	19.55 s	18.48 s	1.58×
 CUTE5 (1xTF32, wgmma)	    49.49 s	30.03 s	19.46 s	18.38 s	1.58×
 
+Projected runtime of 50 pairs of 262144x262144 blocks:
 GPU	                LOOP    CUTE4	CUTE4 gain
 RTX 4090	        32.7 s	31.0 s	1.06×
 H100 SXM	        29.8 s	18.3 s	1.63×
 RTX PRO 6000 BSE	20.6 s	25.7 s	0.80×
 
+Projected runtime of simjoin with k=96:
 case	    pair-comparisons	tiles	    LOOP	            CUTE4	            CUTE4 saves
 500M × 500M	2.500e17	        3,640,464	633.9 h (26.4 d)	401.9 h (16.7 d)	232 h (9.7 d)
 900M × 100M	9.000e16	        1,311,788	228.2 h (9.5 d)	    144.7 h (6.0 d)	    83 h (3.5 d)
