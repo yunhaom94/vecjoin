@@ -648,6 +648,7 @@ Generated:
     "schedule_capacity": 50
 }
 
+Runtime:
 joiner	                    elapsed	verify	net	    gemm	vs LOOP
 LOOP	                    30.83 s	—	    30.83 s	—	    1.00×
 CUTE1 (1xTF32, mma.sync)	45.77 s	30.05 s	15.71 s	14.61 s	1.96×
@@ -658,3 +659,8 @@ GPU	                LOOP    CUTE4	CUTE4 gain
 RTX 4090	        32.7 s	31.0 s	1.06×
 H100 SXM	        29.8 s	18.3 s	1.63×
 RTX PRO 6000 BSE	20.6 s	25.7 s	0.80×
+
+case	    pair-comparisons	tiles	    LOOP	            CUTE4	            CUTE4 saves
+500M × 500M	2.500e17	        3,640,464	633.9 h (26.4 d)	401.9 h (16.7 d)	232 h (9.7 d)
+900M × 100M	9.000e16	        1,311,788	228.2 h (9.5 d)	    144.7 h (6.0 d)	    83 h (3.5 d)
+990M × 10M	9.900e15	        147,303	    25.1 h (1.0 d)	    15.9 h	            9.2 h
