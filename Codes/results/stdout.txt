@@ -655,11 +655,11 @@ CUTE1 (1xTF32, mma.sync)	45.77 s	30.05 s	15.71 s	14.61 s	1.96×
 CUTE4 (3xTF32, mma.sync)	49.89 s	30.34 s	19.55 s	18.48 s	1.58×
 CUTE5 (1xTF32, wgmma)	    49.49 s	30.03 s	19.46 s	18.38 s	1.58×
 
-Projected runtime of 50 pairs of 262144x262144 blocks:
-GPU	                LOOP    CUTE4	CUTE4 gain
-RTX 4090	        32.7 s	31.0 s	1.06×
-H100 SXM	        29.8 s	18.3 s	1.63×
-RTX PRO 6000 BSE	20.6 s	25.7 s	0.80×
+Revised cross-architecture table (3.377e12 pair-comparisons, k=96, 262144 blocks)
+GPU	LOOP	CUTE1	CUTE4	CUTE1 gain	CUTE4 gain
+RTX 4090 (sm_89) ᵐ	32.4 s	18.7 s	32.0 s	1.74×	1.01×
+H100 SXM (sm_90) ᵐ	30.8 s	15.7 s	19.5 s	1.96×	1.58×
+RTX PRO 6000 BSE (sm_120) ᵖ	20.6 s	15.4 s	23.2 s	1.33×	0.89×
 
 Projected runtime of simjoin with k=96:
 case	    pair-comparisons	tiles	    LOOP	            CUTE4	            CUTE4 saves
