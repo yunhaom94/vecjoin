@@ -1,0 +1,668 @@
+@fc10515$ apptainer exec --nv --bind /cvmfs --bind $SLURM_TMPDIR --env JOINER=LOOP ~/shukui/research/images/vess/vess.sif $NSYS profile --output $SLURM_TMPDIR/loop_full_%p --force-overwrite true --trace cuda,nvtx,osrt,cublas --cuda-memory-usage true --gpu-metrics-devices cuda-visible --gpu-metrics-set gh100-ct --gpu-metrics-frequency 20000 --sample process-tree --sampling-period 1000000 --backtrace dwarf --samples-per-backtrace 2 --cpuctxsw process-tree --osrt-threshold 20000 --stats true ./bin/simjoin_gpu config.json
+Collecting data...
+Reading the shape of x from /localscratch/chenshuk.53810506.0/base.10M.fbin
+Reading the shape of y from /localscratch/chenshuk.53810506.0/base.10M.fbin
+x shape: (10000000, 96)
+y shape: (10000000, 96)
+LOOP Joiner
+Result:
+ - pairs_found: 31509978
+ - chunks_written: 50
+ - pairs_written: 31509978
+Stage timings (accumulated over all tiles):
+ - gemm_kernel:                0.000s
+ - export_decode_to_sink:      0.000s
+ - loader_disk_to_host:        0.504s
+ - loader_host_to_device:      0.180s
+Elapsed time: 30.828021249s
+Generating '/tmp/nsys-report-5711.qdstrm'
+[1/8] [========================100%] loop_full_442638.nsys-rep
+[2/8] [========================100%] loop_full_442638.sqlite
+[3/8] Executing 'nvtx_sum' stats report
+
+ Time (%)  Total Time (ns)  Instances    Avg (ns)       Med (ns)      Min (ns)     Max (ns)    StdDev (ns)   Style                 Range               
+ --------  ---------------  ---------  -------------  -------------  -----------  -----------  -----------  -------  ----------------------------------
+     50.1      30827864731          1  30827864731.0  30827864731.0  30827864731  30827864731          0.0  PushPop  :vess::simjoin::gpu::execute()    
+     48.8      29992846051         50    599856921.0    610259642.0     87280646    617716491   73993985.7  PushPop  :ExactFlagJoiner::run()           
+      0.8        483689671         50      9673793.4     10733656.0      1903934     11717263    2269609.3  PushPop  :y_loader                         
+      0.2        147918128         50      2958362.6      2776282.0       439027      6955153     905104.4  PushPop  :FlatWriter::write_loop()         
+      0.0         22309306          2     11154653.0     11154653.0     10596693     11712613     789074.6  PushPop  :x_loader                         
+      0.0          1129127         50        22582.5        20749.5        18940        87249       9583.7  PushPop  CCCL:cub::DeviceScan::ExclusiveSum
+
+[4/8] Executing 'osrt_sum' stats report
+
+ Time (%)  Total Time (ns)  Num Calls    Avg (ns)      Med (ns)     Min (ns)    Max (ns)   StdDev (ns)           Name         
+ --------  ---------------  ---------  ------------  ------------  ----------  ----------  -----------  ----------------------
+     35.0      31821588647        328    97017038.6   100530312.0       42430   265069063   20840206.1  poll                  
+     33.3      30354302435         51   595182400.7   617900449.0       70229   641191096  113055753.4  pthread_cond_wait     
+     30.8      28000399756          7  4000057108.0  4000071118.0  4000010209  4000076338      27562.1  pthread_cond_timedwait
+      0.6        521043382       1128      461917.9       35469.0       20250    51752491    3622905.8  ioctl                 
+      0.1        117757756        100     1177577.6     1148975.5      177479     1805615     242941.0  writev                
+      0.1        105437925         10    10543792.5    14466839.5       20940    19270970    9220709.8  mmap                  
+      0.1         96155784          2    48077892.0    48077892.0     5967721    90188063   59552774.9  munmap                
+      0.0         18754725          4     4688681.3      178793.5       20120    18377018    9126685.9  fopen                 
+      0.0          3232053          1     3232053.0     3232053.0     3232053     3232053          0.0  pthread_join          
+      0.0          2563986          9      284887.3       68440.0       36749     1958183     628719.0  mmap64                
+      0.0           683233          3      227744.3      206648.0      201668      274917      40928.5  pthread_create        
+      0.0           440116          6       73352.7       26284.5       23020      310597     116260.9  sem_timedwait         
+      0.0           258898          1      258898.0      258898.0      258898      258898          0.0  fclose                
+      0.0            63699          1       63699.0       63699.0       63699       63699          0.0  fgets                 
+      0.0            51809          2       25904.5       25904.5       25389       26420        729.0  read                  
+      0.0            30890          1       30890.0       30890.0       30890       30890          0.0  pthread_rwlock_wrlock 
+
+[5/8] Executing 'cuda_api_sum' stats report
+
+ Time (%)  Total Time (ns)  Num Calls   Avg (ns)     Med (ns)    Min (ns)   Max (ns)   StdDev (ns)               Name             
+ --------  ---------------  ---------  -----------  -----------  ---------  ---------  -----------  ------------------------------
+     97.8      29967840404        202  148355645.6      12730.0       1880  614932604  261850638.5  cuMemcpyAsync                 
+      0.9        290354443          6   48392407.2   52616074.0   39622521   52963391    6751163.6  cuMemHostAlloc                
+      0.6        174881331          1  174881331.0  174881331.0  174881331  174881331          0.0  cudaMemGetInfo                
+      0.4        118425209          6   19737534.8   21297318.5   16174786   21620861    2673010.9  cuMemFreeHost                 
+      0.1         28407420        102     278504.1       8075.0       2850    3131734     448868.1  cuEventSynchronize            
+      0.1         17716134          1   17716134.0   17716134.0   17716134   17716134          0.0  cudaMemPoolDestroy_v11020     
+      0.0         14321445        200      71607.2       1480.0        790   13580247     960035.1  cudaMallocFromPoolAsync_v11020
+      0.0          7890355          6    1315059.2     222438.0     153609    6818714    2696484.4  cuMemAllocAsync               
+      0.0          4187488        200      20937.4       7879.5       3360    2159922     152227.0  cudaLaunchKernel              
+      0.0          1547587          1    1547587.0    1547587.0    1547587    1547587          0.0  cuStreamDestroy_v2            
+      0.0          1511697          1    1511697.0    1511697.0    1511697    1511697          0.0  cuLibraryLoadData             
+      0.0          1042131          1    1042131.0    1042131.0    1042131    1042131          0.0  cudaMemPoolCreate_v11020      
+      0.0           910323         50      18206.5      17319.5      14380      33639       3144.2  cuMemsetD8Async               
+      0.0           677707        200       3388.5       1649.5       1090      14960       3262.3  cudaFreeAsync_v11020          
+      0.0           498168        104       4790.1       3845.0       1380      27840       3844.4  cudaEventRecord               
+      0.0           450925         50       9018.5       8570.0       7060      15720       1828.8  cuStreamSynchronize           
+      0.0           259979        102       2548.8       1240.0        540       6170       1855.2  cuEventRecord                 
+      0.0           142938          1     142938.0     142938.0     142938     142938          0.0  cuStreamCreateWithPriority    
+      0.0            74642        200        373.2        360.0         89        810        195.7  cuKernelGetName               
+      0.0            39400          6       6566.7        385.5        300      37030      14926.0  cuEventDestroy_v2             
+      0.0            27050          6       4508.3       1990.0       1530      13540       4807.5  cuMemFreeAsync                
+      0.0            14220          4       3555.0       2020.0        360       9820       4440.9  cudaEventCreate               
+      0.0            11590          4       2897.5       1470.0        411       8239       3696.6  cudaEventDestroy              
+      0.0            10170          2       5085.0       5085.0       1290       8880       5366.9  cudaEventSynchronize          
+      0.0             6161          6       1026.8       1000.0        340       1760        685.4  cuEventCreate                 
+      0.0             2540          1       2540.0       2540.0       2540       2540          0.0  cuModuleGetLoadingMode        
+      0.0             2520          1       2520.0       2520.0       2520       2520          0.0  cudaMemPoolSetAttribute_v11020
+      0.0             2420          3        806.7        620.0        480       1320        450.0  cuLibraryGetKernel            
+      0.0             2270          1       2270.0       2270.0       2270       2270          0.0  cuInit                        
+
+[6/8] Executing 'cuda_gpu_kern_sum' stats report
+
+ Time (%)  Total Time (ns)  Instances   Avg (ns)     Med (ns)    Min (ns)  Max (ns)   StdDev (ns)                                                  Name                                                
+ --------  ---------------  ---------  -----------  -----------  --------  ---------  -----------  ----------------------------------------------------------------------------------------------------
+     99.9      29800094272         50  596001885.4  606593013.0  86639256  611471752   73528389.1  void vess::simjoin::gpu::detail::eps_bitmask_kernel<float, long, raft::linalg::KernelPolicy<float, …
+      0.1         21748755         50     434975.1     336688.0     56352    2928801     514508.1  void vess::simjoin::gpu::detail::bitmask_decode_kernel<(int)256>(const unsigned int *, long, const …
+      0.0           240673         50       4813.5       4800.0      4608       5184        108.2  void cub::detail::scan::DeviceScanKernel<cub::detail::scan::policy_hub<long, long, long, unsigned l…
+      0.0            49728         50        994.6        992.0       960       1184         38.7  void cub::detail::scan::DeviceScanInitKernel<cub::ScanTileState<long, (bool)1>>(T1, int)            
+
+[7/8] Executing 'cuda_gpu_mem_time_sum' stats report
+
+ Time (%)  Total Time (ns)  Count  Avg (ns)   Med (ns)   Min (ns)  Max (ns)  StdDev (ns)           Operation          
+ --------  ---------------  -----  ---------  ---------  --------  --------  -----------  ----------------------------
+     94.9        179084525     52  3443933.2  3500923.5    519072   3513470     413562.1  [CUDA memcpy Host-to-Device]
+      5.1          9607452    150    64049.7    93472.0      2784    133376      44571.6  [CUDA memcpy Device-to-Host]
+      0.0            74336     50     1486.7     1472.0      1440      1984         79.5  [CUDA memset]               
+
+[8/8] Executing 'cuda_gpu_mem_size_sum' stats report
+
+ Total (MB)  Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)           Operation          
+ ----------  -----  --------  --------  --------  --------  -----------  ----------------------------
+   5148.623     52    99.012   100.663    14.795   100.663       11.908  [CUDA memcpy Host-to-Device]
+    252.080    150     1.681     2.485     0.000     3.610        1.231  [CUDA memcpy Device-to-Host]
+    104.858     50     2.097     2.097     2.097     2.097        0.000  [CUDA memset]               
+
+Generated:
+	/localscratch/chenshuk.53810506.0/loop_full_442638.nsys-rep
+	/localscratch/chenshuk.53810506.0/loop_full_442638.sqlite
+@fc10515$ apptainer exec --nv --bind /cvmfs --bind $SLURM_TMPDIR --env JOINER=CUTE1 ~/shukui/research/images/vess/vess.sif $NSYS profile --output $SLURM_TMPDIR/cute1_full_%p --force-overwrite true --trace cuda,nvtx,osrt,cublas --cuda-memory-usage true --gpu-metrics-devices cuda-visible --gpu-metrics-set gh100-ct --gpu-metrics-frequency 20000 --sample process-tree --sampling-period 1000000 --backtrace dwarf --samples-per-backtrace 2 --cpuctxsw process-tree --osrt-threshold 20000 --stats true ./bin/simjoin_gpu config.json
+Collecting data...
+Reading the shape of x from /localscratch/chenshuk.53810506.0/base.10M.fbin
+Reading the shape of y from /localscratch/chenshuk.53810506.0/base.10M.fbin
+x shape: (10000000, 96)
+y shape: (10000000, 96)
+CUTE Joiner (single-pass TF32) -- verifying every block
+[verify] x=[0,262144) y=[0,262144)  reference=902544  false_pos=94  false_neg=122
+[verify] x=[0,262144) y=[262144,524288)  reference=630115  false_pos=90  false_neg=93
+[verify] x=[0,262144) y=[524288,786432)  reference=636392  false_pos=69  false_neg=113
+[verify] x=[0,262144) y=[786432,1048576)  reference=630904  false_pos=79  false_neg=122
+[verify] x=[0,262144) y=[1048576,1310720)  reference=639036  false_pos=85  false_neg=124
+[verify] x=[0,262144) y=[1310720,1572864)  reference=635536  false_pos=104  false_neg=107
+[verify] x=[0,262144) y=[1572864,1835008)  reference=629970  false_pos=85  false_neg=108
+[verify] x=[0,262144) y=[1835008,2097152)  reference=636321  false_pos=96  false_neg=97
+[verify] x=[0,262144) y=[2097152,2359296)  reference=637354  false_pos=103  false_neg=113
+[verify] x=[0,262144) y=[2359296,2621440)  reference=640839  false_pos=88  false_neg=104
+[verify] x=[0,262144) y=[2621440,2883584)  reference=644483  false_pos=74  false_neg=110
+[verify] x=[0,262144) y=[2883584,3145728)  reference=642902  false_pos=111  false_neg=106
+[verify] x=[0,262144) y=[3145728,3407872)  reference=618643  false_pos=94  false_neg=105
+[verify] x=[0,262144) y=[3407872,3670016)  reference=639965  false_pos=87  false_neg=91
+[verify] x=[0,262144) y=[3670016,3932160)  reference=635761  false_pos=98  false_neg=87
+[verify] x=[0,262144) y=[3932160,4194304)  reference=614844  false_pos=81  false_neg=99
+[verify] x=[0,262144) y=[4194304,4456448)  reference=624936  false_pos=90  false_neg=102
+[verify] x=[0,262144) y=[4456448,4718592)  reference=634288  false_pos=114  false_neg=118
+[verify] x=[0,262144) y=[4718592,4980736)  reference=616711  false_pos=90  false_neg=94
+[verify] x=[0,262144) y=[4980736,5242880)  reference=630956  false_pos=96  false_neg=99
+[verify] x=[0,262144) y=[5242880,5505024)  reference=621349  false_pos=88  false_neg=95
+[verify] x=[0,262144) y=[5505024,5767168)  reference=627147  false_pos=93  false_neg=99
+[verify] x=[0,262144) y=[5767168,6029312)  reference=660637  false_pos=102  false_neg=106
+[verify] x=[0,262144) y=[6029312,6291456)  reference=649203  false_pos=93  false_neg=108
+[verify] x=[0,262144) y=[6291456,6553600)  reference=620663  false_pos=79  false_neg=98
+[verify] x=[0,262144) y=[6553600,6815744)  reference=616163  false_pos=93  false_neg=106
+[verify] x=[0,262144) y=[6815744,7077888)  reference=636941  false_pos=86  false_neg=113
+[verify] x=[0,262144) y=[7077888,7340032)  reference=630764  false_pos=91  false_neg=105
+[verify] x=[0,262144) y=[7340032,7602176)  reference=631561  false_pos=119  false_neg=98
+[verify] x=[0,262144) y=[7602176,7864320)  reference=643199  false_pos=77  false_neg=109
+[verify] x=[0,262144) y=[7864320,8126464)  reference=676693  false_pos=86  false_neg=105
+[verify] x=[0,262144) y=[8126464,8388608)  reference=604667  false_pos=102  false_neg=99
+[verify] x=[0,262144) y=[8388608,8650752)  reference=628692  false_pos=94  false_neg=84
+[verify] x=[0,262144) y=[8650752,8912896)  reference=622580  false_pos=76  false_neg=106
+[verify] x=[0,262144) y=[8912896,9175040)  reference=613317  false_pos=85  false_neg=90
+[verify] x=[0,262144) y=[9175040,9437184)  reference=621206  false_pos=89  false_neg=102
+[verify] x=[0,262144) y=[9437184,9699328)  reference=594649  false_pos=94  false_neg=98
+[verify] x=[0,262144) y=[9699328,9961472)  reference=648212  false_pos=91  false_neg=94
+[verify] x=[0,262144) y=[9961472,10000000)  reference=87832  false_pos=13  false_neg=13
+[verify] x=[262144,524288) y=[0,262144)  reference=630115  false_pos=90  false_neg=93
+[verify] x=[262144,524288) y=[262144,524288)  reference=883086  false_pos=72  false_neg=116
+[verify] x=[262144,524288) y=[524288,786432)  reference=626763  false_pos=101  false_neg=92
+[verify] x=[262144,524288) y=[786432,1048576)  reference=620336  false_pos=81  false_neg=82
+[verify] x=[262144,524288) y=[1048576,1310720)  reference=629334  false_pos=95  false_neg=108
+[verify] x=[262144,524288) y=[1310720,1572864)  reference=626087  false_pos=99  false_neg=88
+[verify] x=[262144,524288) y=[1572864,1835008)  reference=620607  false_pos=85  false_neg=87
+[verify] x=[262144,524288) y=[1835008,2097152)  reference=625081  false_pos=118  false_neg=107
+[verify] x=[262144,524288) y=[2097152,2359296)  reference=626569  false_pos=98  false_neg=117
+[verify] x=[262144,524288) y=[2359296,2621440)  reference=630553  false_pos=87  false_neg=87
+[verify] x=[262144,524288) y=[2621440,2883584)  reference=633472  false_pos=111  false_neg=93
+Result:
+ - pairs_found: 31509482
+ - chunks_written: 50
+ - pairs_written: 31509482
+Stage timings (accumulated over all tiles):
+ - gemm_kernel:               14.611s
+ - export_decode_to_sink:      0.032s
+ - loader_disk_to_host:        0.503s
+ - loader_host_to_device:      0.180s
+Verification vs unexpanded-L2 reference (50 blocks):
+ - reference_pairs:  31509978
+ - false_positives:  4516 (0.014332%)
+ - false_negatives:  5012 (0.015906%)
+Elapsed time: 45.768298789s
+Generating '/tmp/nsys-report-71e5.qdstrm'
+[1/8] [========================100%] cute1_full_442822.nsys-rep
+[2/8] [========================100%] cute1_full_442822.sqlite
+[3/8] Executing 'nvtx_sum' stats report
+
+ Time (%)  Total Time (ns)  Instances    Avg (ns)       Med (ns)      Min (ns)     Max (ns)    StdDev (ns)   Style                 Range               
+ --------  ---------------  ---------  -------------  -------------  -----------  -----------  -----------  -------  ----------------------------------
+     50.1      45767398371          1  45767398371.0  45767398371.0  45767398371  45767398371          0.0  PushPop  :vess::simjoin::gpu::execute()    
+     49.2      44935070925         50    898701418.5    913687519.5    131923978    946270334  110751510.1  PushPop  :ExactCuteJoiner::run()           
+      0.5        482812364         50      9656247.3     10688861.5      1806495     11868692    2296570.4  PushPop  :y_loader                         
+      0.2        139204704         50      2784094.1      2675553.0       413517      6636235     872499.1  PushPop  :FlatWriter::write_loop()         
+      0.0         22543363          2     11271681.5     11271681.5     10704601     11838762     801972.9  PushPop  :x_loader                         
+      0.0          1044242         50        20884.8        19115.0        17689        85699       9578.5  PushPop  CCCL:cub::DeviceScan::ExclusiveSum
+
+[4/8] Executing 'osrt_sum' stats report
+
+ Time (%)  Total Time (ns)  Num Calls    Avg (ns)      Med (ns)     Min (ns)    Max (ns)   StdDev (ns)           Name         
+ --------  ---------------  ---------  ------------  ------------  ----------  ----------  -----------  ----------------------
+     34.1      46692016556        476    98092471.8   100528493.0       43879   260826091   17283333.8  poll                  
+     33.1      45301663498         52   871185836.5   920795540.5       75389   924594705  169796243.0  pthread_cond_wait     
+     32.2      44000766939         11  4000069721.7  4000075179.0  4000017179  4000079229      17664.2  pthread_cond_timedwait
+      0.4        503004698       1173      428819.0       35490.0       20650    51803971    3502170.5  ioctl                 
+      0.1        109827256        100     1098272.6     1092190.0      169449     1803545     220445.2  writev                
+      0.1        104543394          9    11615932.7    14413241.0       20390    19044382    8878793.3  mmap                  
+      0.1         96113914          3    32037971.3     5942151.0       25180    90146583   50410422.5  munmap                
+      0.0         19434629          3     6478209.7      297318.0       28289    19109022   10939431.4  fopen                 
+      0.0          2579148          9      286572.0       65980.0       38540     1984603     637903.0  mmap64                
+      0.0           644636          3      214878.7      210369.0      173899      260368      43410.5  pthread_create        
+      0.0           466187          8       58273.4       24420.0       21040      295678      95948.4  sem_timedwait         
+      0.0           268228          1      268228.0      268228.0      268228      268228          0.0  fclose                
+      0.0           226468          1      226468.0      226468.0      226468      226468          0.0  pthread_join          
+      0.0            63779          1       63779.0       63779.0       63779       63779          0.0  fgets                 
+      0.0            50999          2       25499.5       25499.5       25239       25760        368.4  read                  
+      0.0            25040          1       25040.0       25040.0       25040       25040          0.0  pthread_mutex_lock    
+
+[5/8] Executing 'cuda_api_sum' stats report
+
+ Time (%)  Total Time (ns)  Num Calls   Avg (ns)     Med (ns)    Min (ns)   Max (ns)   StdDev (ns)               Name             
+ --------  ---------------  ---------  -----------  -----------  ---------  ---------  -----------  ------------------------------
+     98.5      44864208370        252  178032572.9      17995.0       2200  613508969  242905277.4  cuMemcpyAsync                 
+      0.6        290927991          6   48487998.5   52842417.0   39604592   52992831    6844333.9  cuMemHostAlloc                
+      0.3        159146082          1  159146082.0  159146082.0  159146082  159146082          0.0  cudaMemGetInfo                
+      0.3        117712225          6   19618704.2   21232449.0   16177776   21417133    2624477.4  cuMemFreeHost                 
+      0.1         27673527        102     271309.1       9714.5       3500    3044835     435819.2  cuEventSynchronize            
+      0.0         20805368          1   20805368.0   20805368.0   20805368   20805368          0.0  cuLibraryLoadData             
+      0.0         18339218          1   18339218.0   18339218.0   18339218   18339218          0.0  cudaMemPoolDestroy_v11020     
+      0.0         16475070        550      29954.7       1504.5        820   13727197     585789.8  cudaMallocFromPoolAsync_v11020
+      0.0         15823515       3546       4462.4       2889.0       2620    2253062      37974.7  cudaLaunchKernel              
+      0.0          7959314          6    1326552.3     217343.0     156718    6902293    2731758.9  cuMemAllocAsync               
+      0.0          5685121       1673       3398.2       2550.0       2320      28470       2465.7  cuMemsetD8Async               
+      0.0          1610013        304       5296.1       2260.0       1360      28110       4855.6  cudaEventRecord               
+      0.0          1524937          1    1524937.0    1524937.0    1524937    1524937          0.0  cuStreamDestroy_v2            
+      0.0          1400498        550       2546.4       1580.0        930      19190       3132.2  cudaFreeAsync_v11020          
+      0.0          1012582        100      10125.8       7775.0       5730      20490       3829.2  cuStreamSynchronize           
+      0.0           933592          1     933592.0     933592.0     933592     933592          0.0  cudaMemPoolCreate_v11020      
+      0.0           543593       3546        153.3        110.0         89       9029        309.0  cuKernelGetName               
+      0.0           384206         52       7388.6       7360.0       1450      15280       1883.8  cudaEventSynchronize          
+      0.0           150109          1     150109.0     150109.0     150109     150109          0.0  cuStreamCreateWithPriority    
+      0.0           102067        102       1000.7        970.0        490       3470        338.3  cuEventRecord                 
+      0.0            56400          6       9400.0       5395.0       1850      28470      10362.4  cuMemFreeAsync                
+      0.0            29608         51        580.5        560.0        340       1350        155.1  cudaGetDeviceProperties_v12000
+      0.0            25070          6       4178.3        570.0        270      22580       9017.3  cuEventDestroy_v2             
+      0.0            15700          8       1962.5       1615.0        350       4560       1737.1  cudaEventCreate               
+      0.0            15300          8       1912.5        580.0        340       9570       3182.8  cudaEventDestroy              
+      0.0            15281          6       2546.8        995.0        360       7290       2851.2  cuLibraryGetKernel            
+      0.0             7221          6       1203.5       1025.0        340       2650        985.2  cuEventCreate                 
+      0.0             2910          1       2910.0       2910.0       2910       2910          0.0  cuInit                        
+      0.0             2670          1       2670.0       2670.0       2670       2670          0.0  cuModuleGetLoadingMode        
+      0.0             2440          1       2440.0       2440.0       2440       2440          0.0  cudaMemPoolSetAttribute_v11020
+
+[6/8] Executing 'cuda_gpu_kern_sum' stats report
+
+ Time (%)  Total Time (ns)  Instances   Avg (ns)     Med (ns)    Min (ns)  Max (ns)   StdDev (ns)                                                  Name                                                
+ --------  ---------------  ---------  -----------  -----------  --------  ---------  -----------  ----------------------------------------------------------------------------------------------------
+     65.2      29136369335       1573   18522803.1   18655634.0  12586507   18900667     337734.5  void vess::simjoin::gpu::detail::eps_bitmask_kernel<float, long, raft::linalg::KernelPolicy<float, …
+     32.7      14611102494         50  292222049.9  297174848.5  43963848  298635376   35830525.6  void cutlass::device_kernel<cutlass::gemm::kernel::GemmUniversal<cute::tuple<int, int, int, int>, c…
+      2.1        917586102       1573     583335.1     583711.0    498081     590592       3238.5  <unnamed>::compare_masks_kernel(const unsigned int *, long, const unsigned int *, long, int, int, u…
+      0.0         21035643         50     420712.9     325856.0     54720    2837506     498275.6  void vess::simjoin::gpu::detail::bitmask_decode_kernel<(int)256>(const unsigned int *, long, const …
+      0.0          8907488        100      89074.9      88832.0     14720      92608       7700.7  <unnamed>::round_tf32_kernel(const float *, float *, long)                                          
+      0.0          6028641        100      60286.4      60736.0     10592      64128       5756.4  <unnamed>::row_norms_kernel(const float *, int, int, float *)                                       
+      0.0           250144         50       5002.9       4992.0      4768       5312        102.5  void cub::detail::scan::DeviceScanKernel<cub::detail::scan::policy_hub<long, long, long, unsigned l…
+      0.0            48320         50        966.4        960.0       928       1120         40.9  void cub::detail::scan::DeviceScanInitKernel<cub::ScanTileState<long, (bool)1>>(T1, int)            
+
+[7/8] Executing 'cuda_gpu_mem_time_sum' stats report
+
+ Time (%)  Total Time (ns)  Count  Avg (ns)   Med (ns)   Min (ns)  Max (ns)  StdDev (ns)           Operation          
+ --------  ---------------  -----  ---------  ---------  --------  --------  -----------  ----------------------------
+     93.9        179084334     52  3443929.5  3501137.5    518432   3502819     413648.5  [CUDA memcpy Host-to-Device]
+      5.1          9731717    200    48658.6     9408.0      2368    133344      46593.1  [CUDA memcpy Device-to-Host]
+      1.0          1940480   1673     1159.9     1152.0      1056      1792         94.7  [CUDA memset]               
+
+[8/8] Executing 'cuda_gpu_mem_size_sum' stats report
+
+ Total (MB)  Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)           Operation          
+ ----------  -----  --------  --------  --------  --------  -----------  ----------------------------
+   5148.623     52    99.012   100.663    14.795   100.663       11.908  [CUDA memcpy Host-to-Device]
+    252.077    200     1.260     0.176     0.000     3.610        1.291  [CUDA memcpy Device-to-Host]
+    209.862   1673     0.125     0.066     0.000     2.097        0.347  [CUDA memset]               
+
+Generated:
+	/localscratch/chenshuk.53810506.0/cute1_full_442822.nsys-rep
+	/localscratch/chenshuk.53810506.0/cute1_full_442822.sqlite
+@fc10515$ apptainer exec --nv --bind /cvmfs --bind $SLURM_TMPDIR --env JOINER=CUTE4 ~/shukui/research/images/vess/vess.sif $NSYS profile --output $SLURM_TMPDIR/cute4_full_%p --force-overwrite true --trace cuda,nvtx,osrt,cublas --cuda-memory-usage true --gpu-metrics-devices cuda-visible --gpu-metrics-set gh100-ct --gpu-metrics-frequency 20000 --sample process-tree --sampling-period 1000000 --backtrace dwarf --samples-per-backtrace 2 --cpuctxsw process-tree --osrt-threshold 20000 --stats true ./bin/simjoin_gpu config.json
+Collecting data...
+Reading the shape of x from /localscratch/chenshuk.53810506.0/base.10M.fbin
+Reading the shape of y from /localscratch/chenshuk.53810506.0/base.10M.fbin
+x shape: (10000000, 96)
+y shape: (10000000, 96)
+CUTE Joiner (3xTF32, staged accumulation) -- verifying every block
+[verify] x=[0,262144) y=[0,262144)  reference=902544  false_pos=0  false_neg=6
+[verify] x=[0,262144) y=[262144,524288)  reference=630115  false_pos=0  false_neg=9
+[verify] x=[0,262144) y=[524288,786432)  reference=636392  false_pos=0  false_neg=6
+[verify] x=[0,262144) y=[786432,1048576)  reference=630904  false_pos=0  false_neg=6
+[verify] x=[0,262144) y=[1048576,1310720)  reference=639036  false_pos=0  false_neg=6
+[verify] x=[0,262144) y=[1310720,1572864)  reference=635536  false_pos=0  false_neg=7
+[verify] x=[0,262144) y=[1572864,1835008)  reference=629970  false_pos=0  false_neg=1
+[verify] x=[0,262144) y=[1835008,2097152)  reference=636321  false_pos=0  false_neg=5
+[verify] x=[0,262144) y=[2097152,2359296)  reference=637354  false_pos=0  false_neg=11
+[verify] x=[0,262144) y=[2359296,2621440)  reference=640839  false_pos=0  false_neg=4
+[verify] x=[0,262144) y=[2621440,2883584)  reference=644483  false_pos=0  false_neg=9
+[verify] x=[0,262144) y=[2883584,3145728)  reference=642902  false_pos=0  false_neg=6
+[verify] x=[0,262144) y=[3145728,3407872)  reference=618643  false_pos=0  false_neg=6
+[verify] x=[0,262144) y=[3407872,3670016)  reference=639965  false_pos=0  false_neg=3
+[verify] x=[0,262144) y=[3670016,3932160)  reference=635761  false_pos=0  false_neg=4
+[verify] x=[0,262144) y=[3932160,4194304)  reference=614844  false_pos=0  false_neg=8
+[verify] x=[0,262144) y=[4194304,4456448)  reference=624936  false_pos=0  false_neg=0
+[verify] x=[0,262144) y=[4456448,4718592)  reference=634288  false_pos=0  false_neg=11
+[verify] x=[0,262144) y=[4718592,4980736)  reference=616711  false_pos=0  false_neg=3
+[verify] x=[0,262144) y=[4980736,5242880)  reference=630956  false_pos=0  false_neg=9
+[verify] x=[0,262144) y=[5242880,5505024)  reference=621349  false_pos=0  false_neg=0
+[verify] x=[0,262144) y=[5505024,5767168)  reference=627147  false_pos=0  false_neg=9
+[verify] x=[0,262144) y=[5767168,6029312)  reference=660637  false_pos=0  false_neg=10
+[verify] x=[0,262144) y=[6029312,6291456)  reference=649203  false_pos=0  false_neg=10
+[verify] x=[0,262144) y=[6291456,6553600)  reference=620663  false_pos=0  false_neg=2
+[verify] x=[0,262144) y=[6553600,6815744)  reference=616163  false_pos=0  false_neg=5
+[verify] x=[0,262144) y=[6815744,7077888)  reference=636941  false_pos=0  false_neg=9
+[verify] x=[0,262144) y=[7077888,7340032)  reference=630764  false_pos=0  false_neg=5
+[verify] x=[0,262144) y=[7340032,7602176)  reference=631561  false_pos=0  false_neg=2
+[verify] x=[0,262144) y=[7602176,7864320)  reference=643199  false_pos=0  false_neg=5
+[verify] x=[0,262144) y=[7864320,8126464)  reference=676693  false_pos=0  false_neg=4
+[verify] x=[0,262144) y=[8126464,8388608)  reference=604667  false_pos=0  false_neg=4
+[verify] x=[0,262144) y=[8388608,8650752)  reference=628692  false_pos=0  false_neg=5
+[verify] x=[0,262144) y=[8650752,8912896)  reference=622580  false_pos=0  false_neg=5
+[verify] x=[0,262144) y=[8912896,9175040)  reference=613317  false_pos=0  false_neg=4
+[verify] x=[0,262144) y=[9175040,9437184)  reference=621206  false_pos=0  false_neg=3
+[verify] x=[0,262144) y=[9437184,9699328)  reference=594649  false_pos=0  false_neg=8
+[verify] x=[0,262144) y=[9699328,9961472)  reference=648212  false_pos=0  false_neg=9
+[verify] x=[0,262144) y=[9961472,10000000)  reference=87832  false_pos=0  false_neg=0
+[verify] x=[262144,524288) y=[0,262144)  reference=630115  false_pos=0  false_neg=9
+[verify] x=[262144,524288) y=[262144,524288)  reference=883086  false_pos=0  false_neg=6
+[verify] x=[262144,524288) y=[524288,786432)  reference=626763  false_pos=0  false_neg=5
+[verify] x=[262144,524288) y=[786432,1048576)  reference=620336  false_pos=0  false_neg=6
+[verify] x=[262144,524288) y=[1048576,1310720)  reference=629334  false_pos=0  false_neg=7
+[verify] x=[262144,524288) y=[1310720,1572864)  reference=626087  false_pos=0  false_neg=3
+[verify] x=[262144,524288) y=[1572864,1835008)  reference=620607  false_pos=0  false_neg=6
+[verify] x=[262144,524288) y=[1835008,2097152)  reference=625081  false_pos=0  false_neg=7
+[verify] x=[262144,524288) y=[2097152,2359296)  reference=626569  false_pos=0  false_neg=10
+[verify] x=[262144,524288) y=[2359296,2621440)  reference=630553  false_pos=0  false_neg=8
+[verify] x=[262144,524288) y=[2621440,2883584)  reference=633472  false_pos=0  false_neg=2
+Result:
+ - pairs_found: 31509690
+ - chunks_written: 50
+ - pairs_written: 31509690
+Stage timings (accumulated over all tiles):
+ - gemm_kernel:               18.477s
+ - export_decode_to_sink:      0.032s
+ - loader_disk_to_host:        0.502s
+ - loader_host_to_device:      0.180s
+Verification vs unexpanded-L2 reference (50 blocks):
+ - reference_pairs:  31509978
+ - false_positives:  0 (0.000000%)
+ - false_negatives:  288 (0.000914%)
+Elapsed time: 49.8871913s
+Generating '/tmp/nsys-report-812b.qdstrm'
+[1/8] [========================100%] cute4_full_443007.nsys-rep
+[2/8] [========================100%] cute4_full_443007.sqlite
+[3/8] Executing 'nvtx_sum' stats report
+
+ Time (%)  Total Time (ns)  Instances    Avg (ns)       Med (ns)      Min (ns)     Max (ns)    StdDev (ns)   Style                 Range               
+ --------  ---------------  ---------  -------------  -------------  -----------  -----------  -----------  -------  ----------------------------------
+     50.1      49887026942          1  49887026942.0  49887026942.0  49887026942  49887026942          0.0  PushPop  :vess::simjoin::gpu::execute()    
+     49.3      49056663519         50    981133270.4    998042503.0    145219593   1005776184  120640429.8  PushPop  :ExactCuteJoiner::run()           
+      0.5        482138628         50      9642772.6     10750691.0      1855565     11642784    2269795.0  PushPop  :y_loader                         
+      0.1        133812622         50      2676252.4      2577058.0       356477      6873433     855581.3  PushPop  :FlatWriter::write_loop()         
+      0.0         22780051          2     11390025.5     11390025.5     11053118     11726933     476459.2  PushPop  :x_loader                         
+      0.0          1096904         50        21938.1        19395.0        17740        97549      11743.6  PushPop  CCCL:cub::DeviceScan::ExclusiveSum
+
+[4/8] Executing 'osrt_sum' stats report
+
+ Time (%)  Total Time (ns)  Num Calls    Avg (ns)      Med (ns)     Min (ns)    Max (ns)   StdDev (ns)           Name         
+ --------  ---------------  ---------  ------------  ------------  ----------  ----------  -----------  ----------------------
+     34.1      50818738410        517    98295432.1   100527894.0       42210   264825190   16668986.9  poll                  
+     33.1      49428134583         52   950541049.7  1005699949.5       78879  1010306536  184489806.3  pthread_cond_wait     
+     32.2      48000823802         12  4000068650.2  4000072576.5  4000008617  4000082147      19450.1  pthread_cond_timedwait
+      0.3        506264249       1159      436811.3       35440.0       20370    51768180    3512350.9  ioctl                 
+      0.1        105099167         10    10509916.7    14449005.5       20679    19139861    9185264.3  mmap                  
+      0.1        104499636        100     1044996.4      993532.0      135449     1745556     198366.6  writev                
+      0.1         96412568          2    48206284.0    48206284.0     5929710    90482858   59788104.3  munmap                
+      0.0         64153978          3    21384659.3    21469252.0    21092605    21592121     260280.6  pthread_rwlock_rdlock 
+      0.0         19226580          3     6408860.0      336987.0       22790    18866803   10790038.8  fopen                 
+      0.0          2569758          9      285528.7       65850.0       38359     1964964     630970.7  mmap64                
+      0.0           645045          3      215015.0      211369.0      179929      253747      37043.8  pthread_create        
+      0.0           450288          6       75048.0       28210.0       20760      315478     117921.5  sem_timedwait         
+      0.0           264677          1      264677.0      264677.0      264677      264677          0.0  fclose                
+      0.0           200088          1      200088.0      200088.0      200088      200088          0.0  pthread_join          
+      0.0           158558          3       52852.7       41979.0       27900       88679      31815.1  pthread_rwlock_wrlock 
+      0.0            64209          1       64209.0       64209.0       64209       64209          0.0  fgets                 
+      0.0            51209          2       25604.5       25604.5       25120       26089        685.2  read                  
+
+[5/8] Executing 'cuda_api_sum' stats report
+
+ Time (%)  Total Time (ns)  Num Calls   Avg (ns)     Med (ns)    Min (ns)   Max (ns)   StdDev (ns)               Name             
+ --------  ---------------  ---------  -----------  -----------  ---------  ---------  -----------  ------------------------------
+     98.6      49006668971        252  194470908.6      18140.0       2120  620174748  254317082.1  cuMemcpyAsync                 
+      0.6        289156799          6   48192799.8   52218006.5   39573401   52965130    6600526.9  cuMemHostAlloc                
+      0.3        165314766          1  165314766.0  165314766.0  165314766  165314766          0.0  cudaMemGetInfo                
+      0.2        118440518          6   19740086.3   21334087.5   16180866   21645311    2661605.6  cuMemFreeHost                 
+      0.1         27645364        102     271033.0       9460.0       3360    3046695     435377.0  cuEventSynchronize            
+      0.0         17500465          1   17500465.0   17500465.0   17500465   17500465          0.0  cudaMemPoolDestroy_v11020     
+      0.0         15822972        450      35162.2       1609.5        760   13595507     641296.3  cudaMallocFromPoolAsync_v11020
+      0.0         15104646       3446       4383.2       2820.0       2550    2186212      37388.1  cudaLaunchKernel              
+      0.0          8075263          6    1345877.2     220508.0     163349    6972802    2756901.1  cuMemAllocAsync               
+      0.0          5662466       1673       3384.6       2540.0       2280      24590       2405.0  cuMemsetD8Async               
+      0.0          1587727          1    1587727.0    1587727.0    1587727    1587727          0.0  cuLibraryLoadData             
+      0.0          1569977          1    1569977.0    1569977.0    1569977    1569977          0.0  cuStreamDestroy_v2            
+      0.0          1546986        304       5088.8       2285.0       1350      26420       4546.0  cudaEventRecord               
+      0.0          1241812        450       2759.6       1570.0        800      18980       3548.2  cudaFreeAsync_v11020          
+      0.0          1035672        100      10356.7       8610.0       5700      19510       3897.2  cuStreamSynchronize           
+      0.0           938892          1     938892.0     938892.0     938892     938892          0.0  cudaMemPoolCreate_v11020      
+      0.0           471495       3446        136.8         91.0         70       7290        194.3  cuKernelGetName               
+      0.0           342757         52       6591.5       6465.0       1000      16110       2059.4  cudaEventSynchronize          
+      0.0           141758          1     141758.0     141758.0     141758     141758          0.0  cuStreamCreateWithPriority    
+      0.0            89672        102        879.1        790.0        450       3951        401.1  cuEventRecord                 
+      0.0            32151         51        630.4        571.0        340       2110        271.0  cudaGetDeviceProperties_v12000
+      0.0            23660          6       3943.3       2180.0       1090      12610       4344.7  cuMemFreeAsync                
+      0.0            14651          8       1831.4        485.0        270       8811       2934.8  cudaEventDestroy              
+      0.0            14391          8       1798.9       1755.0        391       3740       1461.8  cudaEventCreate               
+      0.0            12560          6       2093.3       1235.0        310       6980       2540.7  cuEventCreate                 
+      0.0             7150          6       1191.7        625.0        330       4260       1519.8  cuEventDestroy_v2             
+      0.0             7060          5       1412.0        830.0        370       3510       1248.5  cuLibraryGetKernel            
+      0.0             2620          1       2620.0       2620.0       2620       2620          0.0  cuInit                        
+      0.0             2620          1       2620.0       2620.0       2620       2620          0.0  cuModuleGetLoadingMode        
+      0.0             2240          1       2240.0       2240.0       2240       2240          0.0  cudaMemPoolSetAttribute_v11020
+
+[6/8] Executing 'cuda_gpu_kern_sum' stats report
+
+ Time (%)  Total Time (ns)  Instances   Avg (ns)     Med (ns)    Min (ns)  Max (ns)   StdDev (ns)                                                  Name                                                
+ --------  ---------------  ---------  -----------  -----------  --------  ---------  -----------  ----------------------------------------------------------------------------------------------------
+     60.2      29419654967       1573   18702895.7   18738619.0  12483729   20136122     521678.3  void vess::simjoin::gpu::detail::eps_bitmask_kernel<float, long, raft::linalg::KernelPolicy<float, …
+     37.8      18476567176         50  369531343.5  375797829.0  57423439  377887140   45046233.4  void cutlass::device_kernel<cutlass::gemm::kernel::GemmUniversal<cute::tuple<int, int, int, int>, c…
+      1.9        918805472       1573     584110.3     583745.0    499905     595809       4187.3  <unnamed>::compare_masks_kernel(const unsigned int *, long, const unsigned int *, long, int, int, u…
+      0.0         21038508         50     420770.2     325807.5     55456    2835972     498600.0  void vess::simjoin::gpu::detail::bitmask_decode_kernel<(int)256>(const unsigned int *, long, const …
+      0.0          5837539        100      58375.4      58848.0     10560      59808       4854.8  <unnamed>::row_norms_kernel(const float *, int, int, float *)                                       
+      0.0           251584         50       5031.7       5024.0      4800       5280        106.1  void cub::detail::scan::DeviceScanKernel<cub::detail::scan::policy_hub<long, long, long, unsigned l…
+      0.0            48544         50        970.9        960.0       928       1120         39.1  void cub::detail::scan::DeviceScanInitKernel<cub::ScanTileState<long, (bool)1>>(T1, int)            
+
+[7/8] Executing 'cuda_gpu_mem_time_sum' stats report
+
+ Time (%)  Total Time (ns)  Count  Avg (ns)   Med (ns)   Min (ns)  Max (ns)  StdDev (ns)           Operation          
+ --------  ---------------  -----  ---------  ---------  --------  --------  -----------  ----------------------------
+     93.9        179088086     52  3444001.7  3500994.0    533601   3502651     411513.8  [CUDA memcpy Host-to-Device]
+      5.1          9766787    200    48833.9     9520.0      2368    133312      46731.5  [CUDA memcpy Device-to-Host]
+      1.0          1946916   1673     1163.7     1152.0      1056      1952         96.5  [CUDA memset]               
+
+[8/8] Executing 'cuda_gpu_mem_size_sum' stats report
+
+ Total (MB)  Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)           Operation          
+ ----------  -----  --------  --------  --------  --------  -----------  ----------------------------
+   5148.623     52    99.012   100.663    14.795   100.663       11.908  [CUDA memcpy Host-to-Device]
+    252.079    200     1.260     0.176     0.000     3.610        1.291  [CUDA memcpy Device-to-Host]
+    209.862   1673     0.125     0.066     0.000     2.097        0.347  [CUDA memset]               
+
+Generated:
+	/localscratch/chenshuk.53810506.0/cute4_full_443007.nsys-rep
+	/localscratch/chenshuk.53810506.0/cute4_full_443007.sqlite
+@fc10515$ apptainer exec --nv --bind /cvmfs --bind $SLURM_TMPDIR --env JOINER=CUTE5 ~/shukui/research/images/vess/vess.sif $NSYS profile --output $SLURM_TMPDIR/cute5_full_%p --force-overwrite true --trace cuda,nvtx,osrt,cublas --cuda-memory-usage true --gpu-metrics-devices cuda-visible --gpu-metrics-set gh100-ct --gpu-metrics-frequency 20000 --sample process-tree --sampling-period 1000000 --backtrace dwarf --samples-per-backtrace 2 --cpuctxsw process-tree --osrt-threshold 20000 --stats true ./bin/simjoin_gpu config.json
+Collecting data...
+Reading the shape of x from /localscratch/chenshuk.53810506.0/base.10M.fbin
+Reading the shape of y from /localscratch/chenshuk.53810506.0/base.10M.fbin
+x shape: (10000000, 96)
+y shape: (10000000, 96)
+CUTE Joiner (single-pass TF32, Hopper wgmma) -- verifying every block
+[verify] x=[0,262144) y=[0,262144)  reference=902544  false_pos=94  false_neg=122
+[verify] x=[0,262144) y=[262144,524288)  reference=630115  false_pos=90  false_neg=93
+[verify] x=[0,262144) y=[524288,786432)  reference=636392  false_pos=69  false_neg=113
+[verify] x=[0,262144) y=[786432,1048576)  reference=630904  false_pos=79  false_neg=122
+[verify] x=[0,262144) y=[1048576,1310720)  reference=639036  false_pos=85  false_neg=124
+[verify] x=[0,262144) y=[1310720,1572864)  reference=635536  false_pos=104  false_neg=107
+[verify] x=[0,262144) y=[1572864,1835008)  reference=629970  false_pos=85  false_neg=108
+[verify] x=[0,262144) y=[1835008,2097152)  reference=636321  false_pos=96  false_neg=97
+[verify] x=[0,262144) y=[2097152,2359296)  reference=637354  false_pos=103  false_neg=113
+[verify] x=[0,262144) y=[2359296,2621440)  reference=640839  false_pos=88  false_neg=104
+[verify] x=[0,262144) y=[2621440,2883584)  reference=644483  false_pos=74  false_neg=110
+[verify] x=[0,262144) y=[2883584,3145728)  reference=642902  false_pos=111  false_neg=106
+[verify] x=[0,262144) y=[3145728,3407872)  reference=618643  false_pos=94  false_neg=105
+[verify] x=[0,262144) y=[3407872,3670016)  reference=639965  false_pos=87  false_neg=91
+[verify] x=[0,262144) y=[3670016,3932160)  reference=635761  false_pos=98  false_neg=87
+[verify] x=[0,262144) y=[3932160,4194304)  reference=614844  false_pos=81  false_neg=99
+[verify] x=[0,262144) y=[4194304,4456448)  reference=624936  false_pos=90  false_neg=102
+[verify] x=[0,262144) y=[4456448,4718592)  reference=634288  false_pos=114  false_neg=118
+[verify] x=[0,262144) y=[4718592,4980736)  reference=616711  false_pos=90  false_neg=94
+[verify] x=[0,262144) y=[4980736,5242880)  reference=630956  false_pos=96  false_neg=99
+[verify] x=[0,262144) y=[5242880,5505024)  reference=621349  false_pos=88  false_neg=95
+[verify] x=[0,262144) y=[5505024,5767168)  reference=627147  false_pos=93  false_neg=99
+[verify] x=[0,262144) y=[5767168,6029312)  reference=660637  false_pos=102  false_neg=106
+[verify] x=[0,262144) y=[6029312,6291456)  reference=649203  false_pos=93  false_neg=108
+[verify] x=[0,262144) y=[6291456,6553600)  reference=620663  false_pos=79  false_neg=98
+[verify] x=[0,262144) y=[6553600,6815744)  reference=616163  false_pos=93  false_neg=106
+[verify] x=[0,262144) y=[6815744,7077888)  reference=636941  false_pos=86  false_neg=113
+[verify] x=[0,262144) y=[7077888,7340032)  reference=630764  false_pos=91  false_neg=105
+[verify] x=[0,262144) y=[7340032,7602176)  reference=631561  false_pos=119  false_neg=98
+[verify] x=[0,262144) y=[7602176,7864320)  reference=643199  false_pos=77  false_neg=109
+[verify] x=[0,262144) y=[7864320,8126464)  reference=676693  false_pos=86  false_neg=105
+[verify] x=[0,262144) y=[8126464,8388608)  reference=604667  false_pos=102  false_neg=99
+[verify] x=[0,262144) y=[8388608,8650752)  reference=628692  false_pos=94  false_neg=84
+[verify] x=[0,262144) y=[8650752,8912896)  reference=622580  false_pos=76  false_neg=106
+[verify] x=[0,262144) y=[8912896,9175040)  reference=613317  false_pos=85  false_neg=90
+[verify] x=[0,262144) y=[9175040,9437184)  reference=621206  false_pos=89  false_neg=102
+[verify] x=[0,262144) y=[9437184,9699328)  reference=594649  false_pos=94  false_neg=98
+[verify] x=[0,262144) y=[9699328,9961472)  reference=648212  false_pos=91  false_neg=94
+[verify] x=[0,262144) y=[9961472,10000000)  reference=87832  false_pos=13  false_neg=13
+[verify] x=[262144,524288) y=[0,262144)  reference=630115  false_pos=90  false_neg=93
+[verify] x=[262144,524288) y=[262144,524288)  reference=883086  false_pos=72  false_neg=116
+[verify] x=[262144,524288) y=[524288,786432)  reference=626763  false_pos=101  false_neg=92
+[verify] x=[262144,524288) y=[786432,1048576)  reference=620336  false_pos=81  false_neg=82
+[verify] x=[262144,524288) y=[1048576,1310720)  reference=629334  false_pos=95  false_neg=108
+[verify] x=[262144,524288) y=[1310720,1572864)  reference=626087  false_pos=99  false_neg=88
+[verify] x=[262144,524288) y=[1572864,1835008)  reference=620607  false_pos=85  false_neg=87
+[verify] x=[262144,524288) y=[1835008,2097152)  reference=625081  false_pos=118  false_neg=107
+[verify] x=[262144,524288) y=[2097152,2359296)  reference=626569  false_pos=98  false_neg=117
+[verify] x=[262144,524288) y=[2359296,2621440)  reference=630553  false_pos=87  false_neg=87
+[verify] x=[262144,524288) y=[2621440,2883584)  reference=633472  false_pos=111  false_neg=93
+Result:
+ - pairs_found: 31509482
+ - chunks_written: 50
+ - pairs_written: 31509482
+Stage timings (accumulated over all tiles):
+ - gemm_kernel:               18.380s
+ - export_decode_to_sink:      0.032s
+ - loader_disk_to_host:        0.499s
+ - loader_host_to_device:      0.180s
+Verification vs unexpanded-L2 reference (50 blocks):
+ - reference_pairs:  31509978
+ - false_positives:  4516 (0.014332%)
+ - false_negatives:  5012 (0.015906%)
+Elapsed time: 49.49044957s
+Generating '/tmp/nsys-report-cdc1.qdstrm'
+[1/8] [========================100%] cute5_full_443200.nsys-rep
+[2/8] [========================100%] cute5_full_443200.sqlite
+[3/8] Executing 'nvtx_sum' stats report
+
+ Time (%)  Total Time (ns)  Instances    Avg (ns)       Med (ns)      Min (ns)     Max (ns)    StdDev (ns)   Style                 Range               
+ --------  ---------------  ---------  -------------  -------------  -----------  -----------  -----------  -------  ----------------------------------
+     50.1      49490289222          1  49490289222.0  49490289222.0  49490289222  49490289222          0.0  PushPop  :vess::simjoin::gpu::execute()    
+     49.3      48662092694         50    973241853.9    989723011.0    143620220   1004917905  119750008.2  PushPop  :ExactCuteJoiner::run()           
+      0.5        479707054         50      9594141.1     10679662.0      1774495     11576344    2255306.0  PushPop  :y_loader                         
+      0.1        132900504         50      2658010.1      2577918.0       340017      6837904     831641.5  PushPop  :FlatWriter::write_loop()         
+      0.0         22299655          2     11149827.5     11149827.5     10603872     11695783     772097.7  PushPop  :x_loader                         
+      0.0          1039885         50        20797.7        19020.0        17610        71870       7728.1  PushPop  CCCL:cub::DeviceScan::ExclusiveSum
+
+[4/8] Executing 'osrt_sum' stats report
+
+ Time (%)  Total Time (ns)  Num Calls    Avg (ns)      Med (ns)     Min (ns)    Max (ns)   StdDev (ns)           Name         
+ --------  ---------------  ---------  ------------  ------------  ----------  ----------  -----------  ----------------------
+     34.0      50415236212        513    98275314.3   100528828.0       44950   263925654   16711216.2  poll                  
+     33.1      49031659486         52   942916528.6   997179814.0       75200  1000406673  182983735.1  pthread_cond_wait     
+     32.4      48000832661         12  4000069388.4  4000074582.0  4000011213  4000077511      18445.8  pthread_cond_timedwait
+      0.3        504437776       1176      428943.7       35200.0       20030    51881010    3471034.7  ioctl                 
+      0.1        105543428          8    13192928.5    16796766.5       24960    19201861    8379079.4  mmap                  
+      0.1        103538930        100     1035389.3      974957.0      127990     1706946     199179.5  writev                
+      0.1         97786989          2    48893494.5    48893494.5     6002080    91784909   60657620.1  munmap                
+      0.0         19249031          4     4812257.8      156978.5       20200    18914874    9402626.4  fopen                 
+      0.0          2546378          9      282930.9       66190.0       37599     1950324     626504.3  mmap64                
+      0.0           671395          3      223798.3      231598.0      190929      248868      29746.6  pthread_create        
+      0.0           430517          6       71752.8       27825.0       24410      295418     109583.4  sem_timedwait         
+      0.0           236348          1      236348.0      236348.0      236348      236348          0.0  fclose                
+      0.0           194608          1      194608.0      194608.0      194608      194608          0.0  pthread_join          
+      0.0            64459          1       64459.0       64459.0       64459       64459          0.0  fgets                 
+      0.0            52029          2       26014.5       26014.5       25270       26759       1052.9  read                  
+      0.0            42220          1       42220.0       42220.0       42220       42220          0.0  pthread_rwlock_wrlock 
+      0.0            33710          1       33710.0       33710.0       33710       33710          0.0  pthread_mutex_lock    
+
+[5/8] Executing 'cuda_api_sum' stats report
+
+ Time (%)  Total Time (ns)  Num Calls   Avg (ns)     Med (ns)    Min (ns)   Max (ns)   StdDev (ns)                   Name                  
+ --------  ---------------  ---------  -----------  -----------  ---------  ---------  -----------  ---------------------------------------
+     98.6      48610651085        252  192899409.1      18185.0       2131  614278901  252030862.1  cuMemcpyAsync                          
+      0.6        289465433          6   48244238.8   52192832.5   39302185   53097401    6635371.4  cuMemHostAlloc                         
+      0.3        161476442          1  161476442.0  161476442.0  161476442  161476442          0.0  cudaMemGetInfo                         
+      0.2        118896496          6   19816082.7   21535862.0   16300485   21649811    2716544.2  cuMemFreeHost                          
+      0.1         27645791        102     271037.2       8754.5       3330    3037035     435428.3  cuEventSynchronize                     
+      0.0         17809762          1   17809762.0   17809762.0   17809762   17809762          0.0  cudaMemPoolDestroy_v11020              
+      0.0         16250968        550      29547.2       1490.0        820   13530288     577385.3  cudaMallocFromPoolAsync_v11020         
+      0.0         15506711       3546       4373.0       2820.0       2530    2124253      35828.0  cudaLaunchKernel                       
+      0.0          7930996          6    1321832.7     226188.5     158799    6858613    2712683.6  cuMemAllocAsync                        
+      0.0          5684643       1673       3397.9       2540.0       2300      23620       2498.5  cuMemsetD8Async                        
+      0.0          1605235        304       5280.4       2270.0       1480      35320       4796.9  cudaEventRecord                        
+      0.0          1553867          1    1553867.0    1553867.0    1553867    1553867          0.0  cuLibraryLoadData                      
+      0.0          1550387          1    1550387.0    1550387.0    1550387    1550387          0.0  cuStreamDestroy_v2                     
+      0.0          1441093        550       2620.2       1600.0        880      23010       3325.2  cudaFreeAsync_v11020                   
+      0.0          1035042        100      10350.4       8200.0       5349      18250       3989.1  cuStreamSynchronize                    
+      0.0           964452          1     964452.0     964452.0     964452     964452          0.0  cudaMemPoolCreate_v11020               
+      0.0           464272       3546        130.9         90.0         70       7010        189.9  cuKernelGetName                        
+      0.0           376493         52       7240.3       7399.5        969      12580       1719.5  cudaEventSynchronize                   
+      0.0           141629          1     141629.0     141629.0     141629     141629          0.0  cuStreamCreateWithPriority             
+      0.0            93389        100        933.9        835.0        200       2040        718.3  cudaGetDriverEntryPointByVersion_v12050
+      0.0            90756        102        889.8        840.0        460       3540        352.2  cuEventRecord                          
+      0.0            83212        100        832.1        715.0        110       7840        883.7  cuTensorMapEncodeTiled                 
+      0.0            61229          6      10204.8       3169.5       1750      37550      14153.9  cuMemFreeAsync                         
+      0.0            50188          6       8364.7        469.5        380      47639      19241.2  cuEventDestroy_v2                      
+      0.0            30898         51        605.8        609.0        350       1170        130.2  cudaGetDeviceProperties_v12000         
+      0.0            15680          8       1960.0       1590.0        420       4220       1653.9  cudaEventCreate                        
+      0.0            15408          8       1926.0        480.0        289      10180       3404.9  cudaEventDestroy                       
+      0.0            12710          6       2118.3       1105.0        280       5780       2126.8  cuLibraryGetKernel                     
+      0.0            11730          6       1955.0       1090.5        320       7129       2616.9  cuEventCreate                          
+      0.0             3310          1       3310.0       3310.0       3310       3310          0.0  cudaMemPoolSetAttribute_v11020         
+      0.0             3250          1       3250.0       3250.0       3250       3250          0.0  cuModuleGetLoadingMode                 
+      0.0             2420          1       2420.0       2420.0       2420       2420          0.0  cuInit                                 
+
+[6/8] Executing 'cuda_gpu_kern_sum' stats report
+
+ Time (%)  Total Time (ns)  Instances   Avg (ns)     Med (ns)    Min (ns)  Max (ns)   StdDev (ns)                                                  Name                                                
+ --------  ---------------  ---------  -----------  -----------  --------  ---------  -----------  ----------------------------------------------------------------------------------------------------
+     60.1      29114212824       1573   18508717.6   18659894.0  12393739   18904263     363267.1  void vess::simjoin::gpu::detail::eps_bitmask_kernel<float, long, raft::linalg::KernelPolicy<float, …
+     37.9      18379901455         50  367598029.1  373597298.5  55840692  375829574   44999078.1  void cutlass::device_kernel<cutlass::gemm::kernel::GemmUniversal<cute::tuple<int, int, int, int>, c…
+      1.9        917427263       1573     583234.1     583681.0    496737     591297       3401.0  <unnamed>::compare_masks_kernel(const unsigned int *, long, const unsigned int *, long, int, int, u…
+      0.0         20958848         50     419177.0     324336.0     55104    2824892     497152.2  void vess::simjoin::gpu::detail::bitmask_decode_kernel<(int)256>(const unsigned int *, long, const …
+      0.0          8907940        100      89079.4      89216.0     14688      92864       7718.1  <unnamed>::round_tf32_kernel(const float *, float *, long)                                          
+      0.0          6030208        100      60302.1      60720.0     10496      64064       5763.6  <unnamed>::row_norms_kernel(const float *, int, int, float *)                                       
+      0.0           246080         50       4921.6       4896.0      4640       5312        110.3  void cub::detail::scan::DeviceScanKernel<cub::detail::scan::policy_hub<long, long, long, unsigned l…
+      0.0            47808         50        956.2        960.0       928       1088         26.4  void cub::detail::scan::DeviceScanInitKernel<cub::ScanTileState<long, (bool)1>>(T1, int)            
+
+[7/8] Executing 'cuda_gpu_mem_time_sum' stats report
+
+ Time (%)  Total Time (ns)  Count  Avg (ns)   Med (ns)   Min (ns)  Max (ns)  StdDev (ns)           Operation          
+ --------  ---------------  -----  ---------  ---------  --------  --------  -----------  ----------------------------
+     93.9        179094265     52  3444120.5  3501183.5    518624   3511940     413651.0  [CUDA memcpy Host-to-Device]
+      5.1          9741731    200    48708.7     9360.0      2496    133472      46622.2  [CUDA memcpy Device-to-Host]
+      1.0          1936834   1673     1157.7     1152.0      1056      1984         95.2  [CUDA memset]               
+
+[8/8] Executing 'cuda_gpu_mem_size_sum' stats report
+
+ Total (MB)  Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)           Operation          
+ ----------  -----  --------  --------  --------  --------  -----------  ----------------------------
+   5148.623     52    99.012   100.663    14.795   100.663       11.908  [CUDA memcpy Host-to-Device]
+    252.077    200     1.260     0.176     0.000     3.610        1.291  [CUDA memcpy Device-to-Host]
+    209.862   1673     0.125     0.066     0.000     2.097        0.347  [CUDA memset]               
+
+Generated:
+	/localscratch/chenshuk.53810506.0/cute5_full_443200.nsys-rep
+	/localscratch/chenshuk.53810506.0/cute5_full_443200.sqlite
+@fc10515$ cat config.json
+{
+    "x_path": "/localscratch/chenshuk.53810506.0/base.10M.fbin",
+    "y_path": "/localscratch/chenshuk.53810506.0/base.10M.fbin",
+    "threshold": 0.1,
+    "chunk_capacity": 16777216,
+    "pool_size": 4,
+    "filepath": "/localscratch/chenshuk.53810506.0/result.bin",
+    "disk_capacity": 1073741824,
+    "x_block_capacity": 262144,
+    "y_block_capacity": 262144,
+    "schedule_capacity": 50
+}
+
+Measured runtime on H100:
+joiner	                    elapsed	verify	net	    gemm	vs LOOP
+LOOP	                    30.83 s	—	    30.83 s	—	    1.00×
+CUTE1 (1xTF32, mma.sync)	45.77 s	30.05 s	15.71 s	14.61 s	1.96×
+CUTE4 (3xTF32, mma.sync)	49.89 s	30.34 s	19.55 s	18.48 s	1.58×
+CUTE5 (1xTF32, wgmma)	    49.49 s	30.03 s	19.46 s	18.38 s	1.58×
+
+Projected runtime of 50 pairs of 262144x262144 blocks:
+GPU	                LOOP    CUTE4	CUTE4 gain
+RTX 4090	        32.7 s	31.0 s	1.06×
+H100 SXM	        29.8 s	18.3 s	1.63×
+RTX PRO 6000 BSE	20.6 s	25.7 s	0.80×
+
+Projected runtime of simjoin with k=96:
+case	    pair-comparisons	tiles	    LOOP	            CUTE4	            CUTE4 saves
+500M × 500M	2.500e17	        3,640,464	633.9 h (26.4 d)	401.9 h (16.7 d)	232 h (9.7 d)
+900M × 100M	9.000e16	        1,311,788	228.2 h (9.5 d)	    144.7 h (6.0 d)	    83 h (3.5 d)
+990M × 10M	9.900e15	        147,303	    25.1 h (1.0 d)	    15.9 h	            9.2 h
