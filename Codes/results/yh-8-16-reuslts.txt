@@ -1,0 +1,99 @@
+1. 
+
+{
+    "x_path": "base.10M.fbin",
+    "y_path": "base.10M.fbin",
+    "threshold": 0.05,
+    "chunk_capacity": 16777216,
+    "pool_size": 4,
+    "filepath": "result.bin",
+    "disk_capacity": 9223372036854775807,
+    "x_block_capacity": 32768,
+    "y_block_capacity": 32768,
+    "schedule_capacity": 999999999
+}
+
+- 10M + Small blocks
+- diskjoin + CAGAR + LOOP Joiner
+
+15:49:04.797217024 [148752] diskjoin_partitioner_gpu.cpp:98 LOG_INFO      vess_cli     DiskJoinGpuPartitioner: base.10M.fbin: center sampling took 0.001680767s
+15:49:08.548124212 [148752] diskjoin_partitioner_gpu.cpp:209 LOG_INFO      vess_cli     DiskJoinGpuPartitioner: base.10M.fbin: cagra build + assignment took 3.752163378s
+15:49:11.615823859 [148752] diskjoin_partitioner_gpu.cpp:347 LOG_INFO      vess_cli     DiskJoinGpuPartitioner: base.10M.fbin: reorder write took 3.06770922s
+15:49:11.759552018 [148752] diskjoin_pruner.cpp:127      LOG_INFO      vess_cli     DiskJoinPruner: (target recall = 0.9, candidate k = 0) kept 314 of 93636 cluster pairs
+15:49:11.759563390 [148752] scheduler.cpp:122            LOG_INFO      vess_cli     Scheduler: prune took 0.006537605s
+x shape: (10000000, 96)
+y shape: (10000000, 96)
+LOOP Joiner
+15:49:17.485318074 [148752] scheduler.cpp:259            LOG_INFO      vess_cli     Scheduler: schedule build took 0.011019306s
+15:49:17.485321470 [148752] scheduler.cpp:266            LOG_INFO      vess_cli     Scheduler: prune kept 905 of 212521 block pairs
+Result:
+ - pairs_found: 155785338
+ - chunks_written: 905
+ - pairs_written: 155785338
+Elapsed time: 17.690313499s
+ - setup: 0.232327s
+ - partition + schedule: 12.691239582s
+ - join: 4.766746917s
+groundtruth pairs: 157027026 (157027026 read, 0 duplicates)
+approximate pairs: 155785338 (155785338 read, 0 duplicates)
+true positives:    155785338
+recall:            0.992093
+precision:         1.000000
+f1:                0.996031
+
+
+
+2.
+
+{
+    "x_path": "base.10M.fbin",
+    "y_path": "base.10M.fbin",
+    "threshold": 0.05,
+    "chunk_capacity": 16777216,
+    "pool_size": 4,
+    "filepath": "result.bin",
+    "disk_capacity": 9223372036854775807,
+    "x_block_capacity": 262144,
+    "y_block_capacity": 262144,
+    "schedule_capacity": 999999999
+}
+
+- 10M + Large blocks
+- diskjoin + CAGAR + LOOP Joiner
+
+
+15:50:29.257299512 [149532] diskjoin_partitioner_gpu.cpp:98 LOG_INFO      vess_cli     DiskJoinGpuPartitioner: base.10M.fbin: center sampling took 0.000608557s
+15:50:32.578627442 [149532] diskjoin_partitioner_gpu.cpp:209 LOG_INFO      vess_cli     DiskJoinGpuPartitioner: base.10M.fbin: cagra build + assignment took 3.323248204s
+15:50:35.268170802 [149532] diskjoin_partitioner_gpu.cpp:347 LOG_INFO      vess_cli     DiskJoinGpuPartitioner: base.10M.fbin: reorder write took 2.689552698s
+15:50:35.524473892 [149532] diskjoin_pruner.cpp:127      LOG_INFO      vess_cli     DiskJoinPruner: (target recall = 0.9, candidate k = 0) kept 39 of 1521 cluster pairs
+15:50:35.524483681 [149532] scheduler.cpp:122            LOG_INFO      vess_cli     Scheduler: prune took 0.002117296s
+TI debug: sampled 39 of 39 unpruned cluster pairs (stride 1); 0 of 78 samples have zero vectors inside the opposite ball
+TI debug: [  0%,  10%)        0 
+TI debug: [ 10%,  20%)        0 
+TI debug: [ 20%,  30%)        0 
+TI debug: [ 30%,  40%)        0 
+TI debug: [ 40%,  50%)        0 
+TI debug: [ 50%,  60%)        0 
+TI debug: [ 60%,  70%)        0 
+TI debug: [ 70%,  80%)        0 
+TI debug: [ 80%,  90%)        0 
+TI debug: [ 90%, 100%]       78 ############################################################
+x shape: (10000000, 96)
+y shape: (10000000, 96)
+LOOP Joiner
+15:50:41.529691579 [149532] scheduler.cpp:259            LOG_INFO      vess_cli     Scheduler: schedule build took 0.040061516s
+15:50:41.529694916 [149532] scheduler.cpp:266            LOG_INFO      vess_cli     Scheduler: prune kept 98 of 3136 block pairs
+Result:
+ - pairs_found: 153499180
+ - chunks_written: 103
+ - pairs_written: 153499180
+Elapsed time: 37.79836406s
+ - setup: 0.295511293s
+ - partition + schedule: 12.275199296s
+ - join: 25.227653471s
+groundtruth pairs: 157027026 (157027026 read, 0 duplicates)
+approximate pairs: 153499180 (153499180 read, 0 duplicates)
+true positives:    153499180
+recall:            0.977534
+precision:         1.000000
+f1:                0.988639
