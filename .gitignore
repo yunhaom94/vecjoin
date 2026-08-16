@@ -708,3 +708,7 @@ Notes/Literatures/*.pdf
 
 __pycache__
 .claude/settings.local.json
+
+
+
+tmp/**
