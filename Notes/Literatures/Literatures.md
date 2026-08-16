@@ -789,3 +789,138 @@ This document contains a list of literatures that is relevant to this project. E
 - **Summary**: Uses embeddings to identify semantic duplicates in web-scale training data and shows that semantic deduplication can reduce training data while preserving model quality.
 - **Relevance**: Best use-case citation for continuous semantic dedup/corpus hygiene. It motivates threshold-style vector join output: duplicate pairs or groups, not just independent nearest-neighbor search answers.
 ---
+
+---
+- **Title**: HippogriffDB: Balancing I/O and GPU Bandwidth in Big Data Analytics
+- **Author(s)**: Jing Li, Hung-Wei Tseng, Chunbin Lin, Yannis Papakonstantinou, Steven Swanson
+- **Year**: 2016
+- **Venue**: Proceedings of the VLDB Endowment (PVLDB), Vol. 9, No. 14
+- **Summary**: HippogriffDB is a GPU OLAP engine that streams database blocks directly from NVMe SSDs to GPU memory with peer-to-peer DMA, multi-threaded I/O, and circular double buffers, while using GPU decompression to trade excess compute for effective I/O bandwidth. Its query-over-block model fuses relational operators and includes an adaptive compression-selection problem with a greedy 2-approximation, providing a concrete database precedent for direct SSD-GPU transfer, transfer/computation overlap, and block-granularity execution.
+- **Relevance**:
+---
+
+---
+- **Title**: HetCache: Synergising NVMe Storage and GPU Acceleration for Memory-Efficient Analytics
+- **Author(s)**: Hamish Nicholson, Aunn Raza, Periklis Chrysogelos, Anastasia Ailamaki
+- **Year**: 2023
+- **Venue**: CIDR 2023
+- **Summary**: HetCache treats GPU HBM, CPU DRAM, and NVMe as a heterogeneous analytical storage hierarchy rather than assuming that maximizing cache hit rate is always optimal. It introduces impact-oriented proportional caching and access-path-aware placement, choosing both how much of an object to cache and whether access should use GPU Direct Storage or an indirect staged path according to query selectivity, device throughput, and I/O amplification.
+- **Relevance**: High-priority algorithmic precedent for treating the memory hierarchy as a routing graph rather than the fixed chain SSD → DRAM → HBM. Its staged SemiLazy policy chooses between whole-page direct SSD→HBM transfer and SSD→DRAM staging followed by fine-grained GPU access according to selectivity, so DMA creates a per-object access-path decision as well as a caching decision. For our static access graph, the compiler can make this decision from useful-byte density, exact future reuse, and refill cost: send dense or one-shot blocks directly to HBM, retain reusable or sparsely consumed objects in DRAM, and admit an HBM eviction to a DRAM victim cache only when doing so is cheaper than dropping and rereading it. This also means independent DRAM and HBM Belady policies are insufficient; placement, bypass, admission, and eviction should be optimized jointly across tiers.
+---
+
+---
+- **Title**: Accelerating Sampling and Aggregation Operations in GNN Frameworks with GPU Initiated Direct Storage Accesses
+- **Author(s)**: Jeongmin Brian Park, Vikram Sharma Mailthody, Zaid Qureshi, Wen-mei Hwu
+- **Year**: 2024
+- **Venue**: Proceedings of the VLDB Endowment (PVLDB), Vol. 17, No. 6
+- **Summary**: GIDS moves GNN sampling and feature aggregation to the GPU and lets GPU threads fetch feature vectors directly from storage through BaM. It combines a dynamic storage-access accumulator for enough outstanding requests, a constant CPU-memory buffer for hybrid placement, reverse-PageRank-guided placement, and a GPU software cache with window buffering to exploit locality across mini-batches while avoiding OS page faults and cache pollution.
+- **Relevance**: High-priority precedent for how GPU-initiated I/O changes the execution algorithm. GIDS accumulates work from future mini-batches until there are enough outstanding SSD requests, places fine-grained graph structure in pinned DRAM while keeping feature vectors on SSD, uses DRAM-resident hot features as a parallel data source, and pre-samples a future window so HBM cache lines with pending reuse are not evicted. Our access graph exposes the entire future rather than a bounded window, so we can replace its reuse counters with exact next-use/liveness information and use a cost-aware Belady-style HBM policy. Its access accumulator also suggests a compiler/runtime invariant: keep a minimum prefetch frontier or queue depth large enough to saturate the SSDs, subject to HBM and staging-buffer capacity. The paper's DRAM buffer is primarily a static hot-data tier, not a conventional victim cache; using DRAM for victims is our additional multi-tier admission problem.
+---
+
+---
+- **Title**: GeminiFS: A Companion File System for GPUs
+- **Author(s)**: Shi Qiu, Weinan Liu, Yifan Hu, Jianqin Yan, Zhirong Shen, Xin Yao, Renhai Chen, Gong Zhang, Yiming Zhang
+- **Year**: 2025
+- **Venue**: 23rd USENIX Conference on File and Storage Technologies (FAST 2025)
+- **Summary**: GeminiFS adds a GPU-side companion file system over NVMe so kernels can perform direct file-based storage access while retaining host-file-system naming, sharing, isolation, and access control. It embeds synchronized metadata in files, establishes parallel CPU and GPU NVMe control planes, and provides a shared, software-defined GPU page cache whose policies can exploit predictable ML access patterns.
+- **Relevance**:
+---
+
+---
+- **Title**: SPIN: Seamless Operating System Integration of Peer-to-Peer DMA Between SSDs and GPUs
+- **Author(s)**: Shai Bergman, Tanya Brokhman, Tzachi Cohen, Mark Silberstein
+- **Year**: 2017
+- **Venue**: USENIX Annual Technical Conference (USENIX ATC 2017)
+- **Summary**: SPIN integrates SSD-GPU peer-to-peer DMA into the standard POSIX file-I/O path and dynamically selects among P2P, page-cache, and mixed access instead of bypassing the OS unconditionally. Its scheduler accounts for cached fractions, alignment, topology, and request size; it also restores read-ahead for sequential GPU reads and uses direct I/O plus address tunneling to preserve consistency and compatibility with virtual block devices.
+- **Relevance**:
+---
+
+---
+- **Title**: EMOGI: Efficient Memory-access for Out-of-memory Graph-traversal in GPUs
+- **Author(s)**: Seung Won Min, Vikram Sharma Mailthody, Zaid Qureshi, Jinjun Xiong, Eiman Ebrahimi, Wen-mei Hwu
+- **Year**: 2020
+- **Venue**: Proceedings of the VLDB Endowment (PVLDB), Vol. 14, No. 1
+- **Summary**: EMOGI is an important pinned-host-memory baseline: GPU kernels traverse out-of-memory CSR graphs through direct zero-copy cache-line accesses rather than page migration or bulk copies. Warp-level request merging and cache-line alignment reduce PCIe transaction amplification and sustain enough concurrent accesses to hide latency, showing when fine-grained access can outperform Unified Memory despite lower host-device bandwidth.
+- **Relevance**:
+---
+
+---
+- **Title**: GPUfs: Integrating a File System with GPUs
+- **Author(s)**: Mark Silberstein, Bryan Ford, Idit Keidar, Emmett Witchel
+- **Year**: 2013
+- **Venue**: ASPLOS 2013
+- **Summary**: GPUfs is the foundational CPU-assisted design that exposes a POSIX-like file API inside GPU kernels and extends the host buffer cache into GPU memory. Its warp-granularity API coalesces system operations and its per-GPU cache supports direct mapping and reuse, illustrating both the programmability value of file abstractions and the CPU-worker/synchronization overhead later GPU-initiated systems seek to remove.
+- **Relevance**:
+---
+
+---
+- **Title**: AGILE: Lightweight and Efficient Asynchronous GPU-SSD Integration
+- **Author(s)**: Zhuoping Yang, Jinming Zhuang, Xingzhen Chen, Alex K. Jones, Peipei Zhou
+- **Year**: 2025
+- **Venue**: International Conference for High Performance Computing, Networking, Storage, and Analysis (SC 2025)
+- **Summary**: AGILE provides an asynchronous GPU-centric NVMe API that lets GPU threads submit I/O without stalling on each request and overlaps SSD latency with useful computation. It avoids asynchronous deadlocks through a transaction-oriented queue design, lowers register and request-management overhead, and supplies a flexible HBM software cache with application-selectable replacement policy.
+- **Relevance**:
+---
+
+---
+- **Title**: Efficient Graph Embedding at Scale: Optimizing CPU-GPU-SSD Integration
+- **Author(s)**: Zhonggen Li, Xiangyu Ke, Yifan Zhu, Yunjun Gao, Feifei Li
+- **Year**: 2025
+- **Venue**: arXiv preprint (arXiv:2505.09258; revised 2026)
+- **Summary**: Legend assigns graph-embedding work across CPU, GPU, and NVMe using an edge-bucket iteration order designed to make direct SSD-to-GPU embedding prefetch effective with low I/O amplification. It combines an order-generation algorithm, a direct-access driver with coalesced doorbell ringing and batch completion polling, and GPU-side batch construction/updates to overlap transfers and sustain GPU utilization on billion-scale graphs.
+- **Relevance**:
+---
+
+---
+- **Title**: GORIO: GPU-Centered Remote I/O for Graph ANNS over NVMe-oF
+- **Author(s)**: Gen Zhang, Shan Huang, Wenhao Gu, Xinhai Chen
+- **Year**: 2026
+- **Venue**: Technical report / arXiv preprint (arXiv:2607.04415)
+- **Summary**: GORIO extends GPU-centered page-cache I/O to disaggregated NVMe-oF storage for graph ANNS. GPU cache misses become split-phase remote operations while the CPU acts only as a transport/completion proxy; GPU-side pending-state and lane scheduling resume ready traversals, overlap useful graph search with remote page service, and expose opportunities for miss coalescing and selective record materialization.
+- **Relevance**:
+---
+
+---
+- **Title**: SwarmIO: Towards 100 Million IOPS SSD Emulation for Next-generation GPU-centric Storage Systems
+- **Author(s)**: Hyeseong Kim, Gwangoo Yeo, Minsoo Rhu
+- **Year**: 2026
+- **Venue**: arXiv preprint (arXiv:2604.06668)
+- **Summary**: SwarmIO is an NVMe emulator designed for the massive fine-grained request streams generated by GPU-initiated I/O, scaling to tens of millions of modeled IOPS. Its distributed dispatch, coalesced submission-queue fetching, DSA-accelerated batched copies, and aggregated timing updates support end-to-end exploration; a vector-search case study shows that the optimal graph search width changes with available SSD IOPS.
+- **Relevance**:
+---
+
+---
+- **Title**: CAM: Asynchronous GPU-Initiated, CPU-Managed SSD Management for Batching Storage Access
+- **Author(s)**: Ziyu Song, Jie Zhang, Jie Sun, Mo Sun, Zihan Yang, Zheng Zhang, Xuzheng Chen, Fei Wu, Huajin Tang, Zeke Wang
+- **Year**: 2025
+- **Venue**: IEEE International Conference on Data Engineering (ICDE 2025)
+- **Summary**: CAM deliberately splits the direct path: the GPU initiates batched requests and NVMe DMA moves data directly between SSD and GPU memory, but CPU user-space threads manage the storage control plane so GPU SMs remain available for computation. Dynamic assignment of CPU workers to SSDs, one-time mapping for known batches, direct logical-block addressing, and asynchronous APIs enable I/O-compute overlap without kernel-mode I/O or per-request host staging.
+- **Relevance**:
+---
+
+---
+- **Title**: FlashANNS: GPU-Driven Asynchronous I/O Pipelining for Eliminating Storage-Compute Bottlenecks in Billion-Scale Similarity Search
+- **Author(s)**: Yang Xiao, Mo Sun, Ziyu Song, Bing Tian, Jie Sun, Jie Zhang, Zeke Wang, Zonghui Wang, Wenzhi Chen, Fei Wu
+- **Year**: 2026
+- **Venue**: Proceedings of the ACM on Management of Data / SIGMOD 2026
+- **Summary**: FlashANNS is a GPU-accelerated out-of-core graph ANNS system that overlaps SSD node retrieval with GPU distance computation using a dependency-relaxed pipeline with a convergence argument. Its query-grained lock-free SSD access avoids whole-kernel stalls from long-tail requests, while a sampling-based graph-degree selector balances I/O demand against compute across SSD counts, datasets, and recall targets.
+- **Relevance**: High-priority precedent if each database partition uses an SSD-resident graph index. Direct asynchronous retrieval changes graph search itself: FlashANNS issues fetches from a slightly stale frontier to break the fetch→distance→next-node dependency, resumes queries independently when their I/O completes, and selects graph degree by balancing storage time against GPU computation. For us, stale-frontier execution is appropriate only for the approximate fine-search path, not an exact dense join, but query/task-grained completion should replace batch-wide barriers in both modes. The graph fanout, node layout, and fetch granularity should be co-tuned to the DMA page size and available SSD IOPS rather than chosen as index-only parameters. If an entire per-partition index is always prefetched into HBM, FlashANNS is less directly applicable.
+---
+
+---
+- **Title**: Neos: A NVMe-GPUs Direct Vector Service Buffer in User Space
+- **Author(s)**: Yuchen Huang, Xiaopeng Fan, Song Yan, Chuliang Weng
+- **Year**: 2024
+- **Venue**: IEEE International Conference on Data Engineering (ICDE 2024)
+- **Summary**: Neos is an index-agnostic vector-service buffer for connecting NVMe-resident vector data with GPU search engines such as graph ANNS. Available descriptions identify GPU-memory pinning into CPU user space, NVMe memory pinning, customized CPU-GPU copies, and low-overhead polling as its core buffer-path optimizations. (Note: Full text was not available for download and conversion.)
+- **Relevance**:
+---
+
+---
+- **Title**: GPComp: Using GPU and SSD-GPU Peer to Peer DMA to Accelerate LSM-Tree Compaction for Key-Value Store
+- **Author(s)**: Hao Zhou, Yuanhui Chen, Wu Zeng, Lixiao Cui, Gang Wang, Xiaoguang Liu
+- **Year**: 2025
+- **Venue**: IEEE Transactions on Parallel and Distributed Systems, Vol. 36, No. 9
+- **Summary**: GPComp applies SSD-GPU peer-to-peer DMA to LSM-tree compaction, coupling a GPU compaction unit with CPU-GPU cooperative scheduling and an SPDK-based user-space file system called TopFS-GPU. It uses asynchronous write-back caching and a pipeline that overlaps direct SSD-GPU I/O with GPU merge computation, providing a database write/output-path counterpart to read-heavy GPU storage systems. (Note: Full text was not available for download and conversion.)
+- **Relevance**: High-priority database precedent for the output half of our pipeline. Its central algorithmic lesson is that peer-to-peer DMA is useful not only for fetching input: merge/compaction work, write-back buffering, and CPU/GPU responsibilities can be reorganized so the GPU consumes SSD data, produces output runs, and pipelines direct storage writes without round-tripping payloads through host memory. For our join, this motivates GPU-side reduction/packing followed by direct HBM→SSD result chunks, with the CPU retaining metadata, manifest/commit, and global scheduling duties; output buffering and backpressure then become first-class scheduling constraints. It is less relevant to HBM/DRAM input-cache replacement than GIDS and HetCache, and the detailed assessment remains provisional because an open full text was not available.
+---
