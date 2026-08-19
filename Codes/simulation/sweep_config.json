@@ -1,0 +1,65 @@
+{
+  "description": "Spiral, DiskJoin's MECC approximation, and block-RCM on square sparse comparison matrices from 24x24 through 100000x100000. Density is parameterized by average surviving comparisons per D row so the largest matrices remain sparse and executable.",
+  "matrix_sizes": [
+    24,
+    61,
+    153,
+    386,
+    975,
+    2462,
+    6214,
+    15689,
+    39610,
+    100000
+  ],
+  "density_profiles": [
+    {
+      "name": "degree-1",
+      "average_nonzeros_per_row": 1
+    },
+    {
+      "name": "degree-4",
+      "average_nonzeros_per_row": 4
+    },
+    {
+      "name": "degree-16",
+      "average_nonzeros_per_row": 16
+    }
+  ],
+  "skew_profiles": [
+    {
+      "name": "uniform",
+      "row_degree_zipf_alpha": 0.0
+    },
+    {
+      "name": "moderate-zipf",
+      "row_degree_zipf_alpha": 0.8
+    },
+    {
+      "name": "high-zipf",
+      "row_degree_zipf_alpha": 1.4
+    }
+  ],
+  "block_sizes": {
+    "d": "64MiB",
+    "q": "16MiB"
+  },
+  "cache": {
+    "device_capacity": "256MiB",
+    "host_capacity": "512MiB",
+    "policies": [
+      "belady",
+      "lru"
+    ],
+    "victim_admission": "future"
+  },
+  "schedulers": [
+    "spiral",
+    "diskjoin-mecc",
+    "block-rcm"
+  ],
+  "seed": 7,
+  "repetitions": 1,
+  "max_tasks_per_graph": 2000000,
+  "output": "sweep_results.jsonl"
+}
