@@ -1,0 +1,32 @@
+Pruner + GEMM
+
+(vess) pc@Hyjal:~/md/vecjoin/Codes/vess/cpp/build$ ./bin/main config.json 
+09:10:08.698204002 [217144] diskjoin_partitioner_gpu.cpp:98 LOG_INFO      vess_cli     DiskJoinGpuPartitioner: base.10M.fbin: center sampling took 1.265732204s
+09:10:14.557238669 [217144] diskjoin_partitioner_gpu.cpp:197 LOG_INFO      vess_cli     DiskJoinGpuPartitioner: base.10M.fbin: cagra build + assignment took 5.86074093s
+09:10:20.086432134 [217144] diskjoin_partitioner_gpu.cpp:332 LOG_INFO      vess_cli     DiskJoinGpuPartitioner: base.10M.fbin: reorder write took 5.529204031s
+09:10:20.252772124 [217144] diskjoin_pruner.cpp:127      LOG_INFO      vess_cli     DiskJoinPruner: (target recall = 0.9, candidate k = 0) kept 314 of 93636 cluster pairs
+09:10:20.252793044 [217144] scheduler.cpp:122            LOG_INFO      vess_cli     Scheduler: prune took 0.007332511s
+09:10:20.253928277 [217144] scheduler.cpp:259            LOG_INFO      vess_cli     Scheduler: schedule build took 0.00114448s
+x shape: (10000000, 96)
+y shape: (10000000, 96)
+FMA Joiner (expanded L2, fused SIMT bitmask GEMM)
+09:10:20.253929911 [217144] scheduler.cpp:266            LOG_INFO      vess_cli     Scheduler: prune kept 905 of 212521 block pairs
+Result:
+ - pairs_found: 155785674
+ - chunks_written: 905
+ - pairs_written: 155785674
+ - blocks_loaded: 1366
+ - blocks_reloaded: 444
+ - mb_loaded: 11439.78
+Elapsed time: 17.761153778s
+ - setup: 0.561805175s
+ - partition + schedule: 12.82382289s
+ - join: 4.375525713s
+
+python ../../scripts/calculate_percision.py --x-map base.10M.x.ids.bin ../../scripts/result10M.bin result.bin 
+groundtruth pairs: 157027026 (157027026 read, 0 duplicates)
+approximate pairs: 155785674 (155785674 read, 0 duplicates)
+true positives:    155784452
+recall:            0.992087
+precision:         0.999992
+f1:                0.996024
