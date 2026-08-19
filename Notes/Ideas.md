@@ -30,6 +30,23 @@ Given a database set `D` and a query set `Q` of high-dimensional vectors:
 
 Why this is a join: the complete query set exposes reuse across many vectors and permits global data-movement scheduling. Independent ANN queries discard that opportunity.
 
+Formal join semantics, for distance function `delta`:
+
+$$
+J_\epsilon(D,Q)=\{(d,q)\in D\times Q:\delta(d,q)\leq\epsilon\}.
+$$
+
+$$
+N_k(q)=\operatorname*{arg\,min}_{S\subseteq D,\ |S|=k}
+\sum_{d\in S}\delta(d,q),
+\qquad
+J_k(D,Q)=\bigcup_{q\in Q}\{(d,q):d\in N_k(q)\}.
+$$
+
+- approximate threshold quality: $\operatorname{Recall}(\widehat J_\epsilon)=|\widehat J_\epsilon\cap J_\epsilon|/|J_\epsilon|$;
+- approximate top-k quality: $\operatorname{Recall@}k=|Q|^{-1}\sum_{q\in Q}|\widehat N_k(q)\cap N_k(q)|/k$;
+- exact modes require safe coarse pruning and exhaustive/guaranteed fine execution over every retained pair; approximate modes may additionally prune candidates and report recall.
+
 ### 2. Access-Graph Compiler
 Offline graph construction:
 
@@ -47,6 +64,77 @@ G = (D_blocks, Q_blocks, E)
 
 Each edge `(D_i, Q_j)` is a block-pair task. The compiler linearizes the fully known graph into a finite access trace; that ordered trace exposes next use and reuse distance for prefetch and eviction.
 
+Safe coarse-pruning formulation for metric `delta`:
+
+$$
+D=\biguplus_{i=1}^{n_D}D_i,
+\qquad
+Q=\biguplus_{j=1}^{n_Q}Q_j,
+$$
+
+$$
+r_i^D=\max_{d\in D_i}\delta(d,c_i^D),
+\qquad
+r_j^Q=\max_{q\in Q_j}\delta(q,c_j^Q),
+$$
+
+$$
+L_{ij}=\max\{0,\delta(c_i^D,c_j^Q)-r_i^D-r_j^Q\}
+\leq \delta(d,q)
+\quad \forall(d,q)\in D_i\times Q_j.
+$$
+
+- threshold graph: $E_\epsilon=\{(i,j):L_{ij}\leq\epsilon\}$; discard `(i,j)` when $L_{ij}>\epsilon$;
+- top-k with current per-query upper bounds $U_q$: $L_{i,q}=\max\{0,\delta(c_i^D,q)-r_i^D\}$; retain `(i,j)` iff $\exists q\in Q_j:L_{i,q}\leq U_q$;
+- coarser blockwise top-k test: discard `(i,j)` when $L_{ij}>\max_{q\in Q_j}U_q$;
+- every retained edge is executed once; pruning changes `E`, while scheduling permutes `E`.
+
+Joint scheduling, placement, and routing formulation:
+
+- objects $\mathcal O=\{D_i,Q_j,I_i,\ldots\}$ have sizes $s_o$; task $e_t=(i,j)$ requires $\{D_i,Q_j\}\subseteq\mathcal A(e_t)$ in HBM, plus `I_i` for an indexed path;
+- schedule $\pi=(e_1,\ldots,e_{|E|})\in\operatorname{Perm}(E)$;
+- $x^H_{o,t},x^R_{o,t}\in\{0,1\}$ denote HBM/DRAM residency; $y^r_{o,t}\in\{0,1\}$ denotes a transfer on data route $r\in\mathcal R_d$;
+- data routes $\mathcal R_d=\{S\!\to\!R,S\!\to\!H,R\!\to\!H,H\!\to\!R\}$ cover staged/direct reads, promotion, and demotion; result output uses $H\!\to\!S$;
+- route cost $\phi_r(s)=\alpha_r s+\beta_r$ combines bandwidth/byte cost and per-request overhead.
+
+$$
+C^*=\min_{\pi\in\operatorname{Perm}(E)}
+\min_{x,y\ \mathrm{feasible\ for}\ \pi}
+\left[
+\sum_{t=1}^{|E|}\sum_{o\in\mathcal O}\sum_{r\in\mathcal R_d}
+\phi_r(s_o)y^r_{o,t}
++\sum_{t=1}^{|E|}\phi_{H\to S}(z_{e_t})
+\right],
+$$
+
+subject to
+
+$$
+\sum_o s_o x^H_{o,t}+B_t^{\mathrm{stage}}+B_t^{\mathrm{out}}\leq C_H,
+\qquad
+\sum_o s_o x^R_{o,t}\leq C_R,
+$$
+
+$$
+x^H_{o,t}=1\quad\forall o\in\mathcal A(e_t),
+$$
+
+plus legal transfer/residency transitions and dependency-safe prefetch deadlines. Here `S`, `R`, and `H` denote SSD, DRAM, and HBM; $z_e$ is task output size. The fixed-trace placement problem is the inner minimization; joint access-graph compilation also chooses `pi`.
+
+Current trace-simulator specialization:
+
+$$
+C_{\mathrm{ops}}(\pi)=N_{S\to H}+N_{R\to H}+N_{H\to R},
+$$
+
+$$
+C_{\mathrm{bytes}}(\pi)=
+\sum_{r\in\{S\to H,R\to H,H\to R\}}\ \sum_{\text{transfers on }r}s_o.
+$$
+
+- equal 64 MiB blocks make $C_{\mathrm{bytes}}=64\ \mathrm{MiB}\cdot C_{\mathrm{ops}}$; the controlled sweep therefore compares ordering rather than object-size weighting;
+- ultimate runtime objective: minimize dependency-constrained makespan with SSD, interconnect, GPU, and output overlap; byte/operation cost is the current scheduling surrogate.
+
 Compiler settings and responsibilities:
 
 - build/prune the graph and compile the schedule on CPU; keep pruning and scheduling implementations pluggable;
@@ -59,8 +147,29 @@ Candidate scheduling baselines:
 - row-major / block nested loop, pinning `D` blocks while sweeping `Q` blocks;
 - random;
 - DiskJoin/Gorder-style graph ordering;
-- Reverse Cuthill-McKee node ordering with a deterministic incident-edge/task traversal;
+- Reverse Cuthill-McKee block ordering with the same D-grouped edge-emission policy as other grouped baselines;
 - oracle/Belady trace simulation.
+
+Grouped-baseline formulations, with $N(i)=\{j:(i,j)\in E\}$:
+
+- any D-group order $\rho$ induces $\pi_\rho=\bigoplus_{i\in\rho}[(i,j):j\in N(i)]$; only group and within-group order vary in the controlled sweep;
+- MECC/Gorder overlap score at step `t`: $g_t(i)=\sum_{h=\max(1,t-w)}^{t-1}|N(i)\cap N(i_h)|$; greedily choose an unscheduled `i` maximizing $g_t(i)$;
+- adapted window: $w=\max\{1,\lfloor C_Q/\bar d\rfloor\}$, where $C_Q=\lfloor(C_H-s_D^{\max})/s_Q^{\max}\rfloor$ cached-side slots and $\bar d=|E|/|D_{\mathrm{active}}|$;
+- RCM vertex order `p` heuristically reduces bipartite graph bandwidth $\operatorname{bw}(p)=\max_{(u,v)\in E}|p(u)-p(v)|$;
+- D-grouped RCM: sort D vertices by `p`, then sort each $N(i)$ by the Q vertices' positions in `p`; bandwidth is a locality surrogate, not the multi-tier cost $C^*$.
+
+Implemented block-RCM method:
+
+- treat every `D_i` and `Q_j` block as a vertex in the undirected bipartite access graph; surviving comparison tasks are edges;
+- per connected component: choose the minimum-degree unscheduled root, breadth-first traverse, enqueue unseen neighbors by increasing degree with deterministic block-ID ties, then reverse the component's BFS order;
+- RCM returns a block-vertex order, not an edge schedule; filter the full order to obtain the D-group order;
+- for each D block in that filtered order, emit all incident tasks contiguously; order its Q tasks by the Q endpoints' positions in the full RCM order;
+- optional symmetric variant: filter to Q and emit one contiguous group per Q block; primary sweep fixes D grouping for every scheduler;
+- sparse implementation only: `O(|V| + |E|)` storage and traversal plus local adjacency/incident-edge sorting; never materialize the dense comparison matrix or task line graph;
+- baseline objective: reduce graph bandwidth/reuse distance; cache-independent, so it ignores `C_d`/`C_h`, cache policy, and tier-specific refill cost;
+- controlled sweep: equal 64 MiB D/Q blocks; D-grouped row-major, MECC, and RCM differ only in group/within-group order;
+- current result: MECC uses only 0.25% fewer aggregate total transfers than grouped RCM (`0.9975x`; 108/30/42 W/T/L); RCM is 0.36% better at degree 16; both beat grouped row-major by about 2.5% aggregate;
+- implication: previous large MECC-RCM gap was a grouping/block-size confound; pursue cache-/tier-aware ordering against both competitive baselines.
 
 ### 3. Multi-Tier GPU Runtime
 The runtime executes the compiled schedule over SSD, DRAM, and GPU HBM.

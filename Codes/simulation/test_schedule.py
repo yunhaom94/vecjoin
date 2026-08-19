@@ -11,7 +11,9 @@ if __package__:
         Block,
         Task,
         _diskjoin_stream_side,
+        block_rcm_schedule,
         diskjoin_mecc_schedule,
+        row_major_schedule,
         validate_schedule,
     )
 else:
@@ -20,7 +22,9 @@ else:
         Block,
         Task,
         _diskjoin_stream_side,
+        block_rcm_schedule,
         diskjoin_mecc_schedule,
+        row_major_schedule,
         validate_schedule,
     )
 
@@ -70,6 +74,88 @@ class DiskJoinMECCTests(unittest.TestCase):
         # Referenced bytes alone would choose Q (120 > 64), while DiskJoin's
         # relation-level rule correctly chooses D (128 > 120).
         self.assertEqual(_diskjoin_stream_side(graph), "D")
+
+
+class BlockRCMTests(unittest.TestCase):
+    def test_groups_every_d_block_once(self) -> None:
+        blocks = {
+            **{f"D{i}": Block(f"D{i}", "D", 64) for i in range(4)},
+            **{f"Q{i}": Block(f"Q{i}", "Q", 64) for i in range(4)},
+        }
+        graph = AccessGraph(
+            blocks,
+            (
+                Task("D0", "Q0"),
+                Task("D0", "Q2"),
+                Task("D1", "Q0"),
+                Task("D1", "Q1"),
+                Task("D2", "Q1"),
+                Task("D2", "Q3"),
+                Task("D3", "Q0"),
+                Task("D3", "Q3"),
+            ),
+        )
+
+        schedule = block_rcm_schedule(graph)
+        validate_schedule(graph, schedule)
+        positions_by_d: dict[str, list[int]] = {}
+        for position, task in enumerate(schedule):
+            positions_by_d.setdefault(task.d_block, []).append(position)
+
+        for positions in positions_by_d.values():
+            self.assertEqual(positions, list(range(positions[0], positions[-1] + 1)))
+
+    def test_can_group_q_instead(self) -> None:
+        blocks = {
+            **{f"D{i}": Block(f"D{i}", "D", 64) for i in range(2)},
+            **{f"Q{i}": Block(f"Q{i}", "Q", 64) for i in range(2)},
+        }
+        graph = AccessGraph(
+            blocks,
+            (
+                Task("D0", "Q0"),
+                Task("D0", "Q1"),
+                Task("D1", "Q0"),
+                Task("D1", "Q1"),
+            ),
+        )
+
+        schedule = block_rcm_schedule(graph, group_side="Q")
+        validate_schedule(graph, schedule)
+        q_runs = [task.q_block for task in schedule]
+        self.assertLessEqual(
+            sum(left != right for left, right in zip(q_runs, q_runs[1:])),
+            1,
+        )
+
+
+class RowMajorTests(unittest.TestCase):
+    def test_uses_natural_numeric_block_order(self) -> None:
+        blocks = {
+            "D2": Block("D2", "D", 64),
+            "D10": Block("D10", "D", 64),
+            "Q2": Block("Q2", "Q", 64),
+            "Q10": Block("Q10", "Q", 64),
+        }
+        graph = AccessGraph(
+            blocks,
+            (
+                Task("D10", "Q10"),
+                Task("D2", "Q10"),
+                Task("D10", "Q2"),
+                Task("D2", "Q2"),
+            ),
+        )
+
+        self.assertEqual(
+            row_major_schedule(graph),
+            (
+                Task("D2", "Q2"),
+                Task("D2", "Q10"),
+                Task("D10", "Q2"),
+                Task("D10", "Q10"),
+            ),
+        )
 
 
 if __name__ == "__main__":

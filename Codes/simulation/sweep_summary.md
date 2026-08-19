@@ -1,35 +1,56 @@
-# Spiral vs. DiskJoin-MECC vs. Block-RCM Sweep Summary
+# Equal-Block D-Grouped Scheduler Sweep Summary
 
 ## Executive summary
 
-The sweep now contains 540 cache simulations: 180 matched workload/cache-policy triples for outside-in spiral, DiskJoin's MECC approximation, and block-RCM. It covers ten square matrix sizes from `24 x 24` through `100000 x 100000`, three sparse-density profiles, three row-degree skews, and both Belady-style and LRU caching.
+The corrected sweep contains 540 cache simulations: 180 matched workload/cache-policy triples for D-grouped row-major, DiskJoin's MECC approximation, and D-grouped block-RCM. It covers ten square matrix sizes from `24 x 24` through `100000 x 100000`, three sparse-density profiles, three D-row-degree skews, and both Belady-style and LRU caching.
 
-DiskJoin-MECC is the strongest scheduler for the current byte-weighted, asymmetric-block workload:
+The experiment now isolates group ordering:
 
-- versus spiral: 56.2% fewer aggregate total bytes and 11.1% fewer total I/O operations;
-- versus block-RCM: 48.4% fewer aggregate total bytes and 5.3% fewer total I/O operations;
-- strict best among all three in 142/180 cases for total bytes and 131/180 for total operations;
-- no total-byte loss to spiral, and only 15/180 total-byte losses to block-RCM.
+- every D and Q block is 64 MiB;
+- every scheduler emits all tasks for each D block contiguously;
+- row-major, MECC, and RCM differ only in D-group order and within-group Q order;
+- every fixed trace runs through the same two-tier cache simulator and policy.
 
-The important qualification is the metric boundary. MECC uses 28.8% fewer aggregate SSD-read bytes than RCM but issues 6.8% more SSD-read operations. In the largest dense/high-skew Belady case, RCM reads less from SSD (17.13 TiB versus MECC's 26.31 TiB), yet moves far more data across all tiers (76.51 TiB versus 26.99 TiB). The two-tier hierarchy therefore changes what “minimum I/O” means.
+The previous large MECC advantage disappears under this controlled comparison. Across all cases, MECC uses only 0.25% fewer aggregate total transfers than grouped RCM (`0.9975x`), with a median per-case ratio of `0.9990x`. MECC wins/ties/loses 108/30/42 matched cases against RCM. The two graph orderings are therefore competitive rather than categorically different.
+
+Both graph orderings improve on grouped row-major: MECC uses 2.66% fewer aggregate total transfers and RCM uses 2.42% fewer. MECC is the unique total-transfer winner in 108/180 cases, RCM in 40, and row-major in 2; 30 cases have a tied best result.
+
+Because all blocks have equal size, total-byte and total-operation ratios are identical. The results no longer depend on weighting D transfers four times more heavily than Q transfers.
 
 ## What was implemented
 
-MECC itself is NP-hard. The implemented `diskjoin-mecc` scheduler is DiskJoin's published approximation, adapted from Algorithm 2 and the reference `tmp/DiskJoin/lib/Gorder.h` implementation:
+### D-grouped row-major
 
-1. choose the larger relation as the streaming side;
-2. choose its maximum-degree active block as the first block;
-3. greedily choose the next streaming block with maximum cached-neighbor overlap across the previous `w` blocks;
-4. emit all comparison tasks of each streaming block consecutively;
-5. execute the resulting fixed trace with the same cache policy as every other scheduler.
+Order active D blocks and their incident Q blocks by natural numeric block ID, then emit every task for one D block before advancing to the next D block.
 
-For this cross-join, D is always the larger relation because D and Q have the same block count but D blocks are 64 MiB versus 16 MiB for Q. The implementation therefore streams D and reuses Q. After reserving one largest D block in the 256 MiB device cache, 12 Q blocks fit, and the paper's window rule becomes:
+### DiskJoin-MECC approximation
+
+The implemented scheduler follows DiskJoin's Gorder-style approximation:
+
+1. choose the streaming side; equal-size square relations tie-break to D;
+2. choose the maximum-degree active D block first;
+3. greedily choose the next D block with maximum Q-neighbor overlap across the previous `w` D groups;
+4. emit every task for each selected D block contiguously;
+5. order Q tasks within a D group by natural numeric ID.
+
+After reserving one 64 MiB D block in the 256 MiB device cache, three 64 MiB Q blocks fit. The adapted window rule is:
 
 ```text
-w = max(1, floor(12 / average active D-row degree))
+w = max(1, floor(3 / average active D-row degree))
 ```
 
-DiskJoin assumes equal-size buckets and one cache. Reserving the streaming D block before converting bytes to Q slots is the explicit adaptation to this simulator's unequal blocks and device cache. RAM remains the same exclusive victim cache for every scheduler; it is not folded into `w` because tasks can execute only when both operands are in VRAM.
+The window is therefore three at degree 1 and one at degrees 4 and 16.
+
+### D-grouped block-RCM
+
+RCM itself produces a block-vertex order, not an edge order. The corrected trace construction is:
+
+1. run deterministic RCM on the undirected bipartite D-Q access graph;
+2. filter the full RCM vertex order to obtain the D-group order;
+3. for each D block, emit all incident tasks contiguously;
+4. order those tasks by each Q endpoint's position in the full RCM order.
+
+This gives RCM the same D-grouping policy as MECC. The implementation also supports Q grouping explicitly, although the primary sweep fixes D grouping for every scheduler.
 
 ## Experimental setup
 
@@ -37,110 +58,105 @@ DiskJoin assumes equal-size buckets and one cache. Reserving the streaming D blo
 |---|---|
 | Matrix sizes | 24, 61, 153, 386, 975, 2,462, 6,214, 15,689, 39,610, 100,000 |
 | Average surviving pairs per D row | 1, 4, 16 |
-| Row-degree Zipf alpha | 0.0 (uniform), 0.8 (moderate), 1.4 (high) |
-| D / Q block size | 64 MiB / 16 MiB |
-| Device cache `C_d` | 256 MiB |
-| Host victim cache `C_h` | 512 MiB |
+| D-row-degree Zipf alpha | 0.0 (uniform), 0.8 (moderate), 1.4 (high) |
+| D / Q block size | 64 MiB / 64 MiB |
+| Device cache `C_d` | 256 MiB (four blocks) |
+| Host victim cache `C_h` | 512 MiB (eight blocks) |
 | Cache policies | Belady-style, LRU |
 | Victim admission | Only blocks with a future use |
-| Schedulers | Outside-in spiral, DiskJoin-MECC, block-RCM |
+| Schedulers | D-grouped row-major, DiskJoin-MECC, D-grouped block-RCM |
 | Repetitions | One deterministic seed per configuration |
 
-Density is average nonzeros per row. An `n x n` matrix with average degree `k` has realized density `k/n`, so the largest graphs contain 100,000, 400,000, or 1,600,000 tasks without materializing ten billion cells.
+Density is average nonzeros per D row. An `n x n` matrix with average degree `k` has realized density `k/n`, so the largest graphs contain 100,000, 400,000, or 1,600,000 tasks without materializing ten billion cells.
 
-Zipf ranks are randomly assigned to physical D rows, preventing hot rows from being systematically placed on the spiral boundary. Q popularity remains approximately uniform. One logical I/O is one whole-block transfer; total I/O includes SSD-to-device, host-to-device, and device-to-host transfers.
+Zipf ranks are randomly assigned to physical D rows. Q popularity remains approximately uniform. One logical I/O is one whole-block transfer; total I/O includes SSD-to-device, host-to-device, and device-to-host transfers.
 
 ## Overall pairwise results
 
-Ratios below 1 favor MECC. Wins/ties/losses are from MECC's perspective over 180 matched cases.
+Ratios below 1 favor the numerator. Win/tie/loss counts are over 180 matched cases.
 
-| Baseline | Metric | Aggregate ratio | Change | MECC wins / ties / losses |
+| Comparison | Metric | Aggregate ratio | Change | Numerator W/T/L |
 |---|---|---:|---:|---:|
-| Spiral | Total bytes | 0.438 | 56.2% fewer | 176 / 4 / 0 |
-| Spiral | Total operations | 0.889 | 11.1% fewer | 173 / 4 / 3 |
-| Spiral | SSD-read bytes | 0.522 | 47.8% fewer | 163 / 17 / 0 |
-| Spiral | SSD-read operations | 0.936 | 6.4% fewer | 132 / 17 / 31 |
-| Block-RCM | Total bytes | 0.516 | 48.4% fewer | 142 / 23 / 15 |
-| Block-RCM | Total operations | 0.947 | 5.3% fewer | 132 / 24 / 24 |
-| Block-RCM | SSD-read bytes | 0.712 | 28.8% fewer | 116 / 36 / 28 |
-| Block-RCM | SSD-read operations | 1.068 | 6.8% more | 94 / 36 / 50 |
+| MECC / row-major | Total transfers or bytes | 0.9734 | 2.66% fewer | 165 / 7 / 8 |
+| RCM / row-major | Total transfers or bytes | 0.9758 | 2.42% fewer | 159 / 12 / 9 |
+| MECC / RCM | Total transfers or bytes | 0.9975 | 0.25% fewer | 108 / 30 / 42 |
+| MECC / RCM | SSD-read transfers or bytes | 0.9819 | 1.81% fewer | 134 / 30 / 16 |
 
-The median per-case MECC ratios are 0.476 bytes and 0.831 operations versus spiral, and 0.620 bytes and 0.947 operations versus RCM. Thus, the conclusion is not solely caused by weighting the largest traces, although aggregate byte savings are larger because dense large graphs especially favor D-row grouping.
+MECC's SSD-read advantage shrinks at the total-traffic boundary. Across the sweep, MECC avoids 395,701 SSD reads relative to RCM but performs 316,555 additional host promotions and demotions, leaving a net advantage of only 79,146 total transfers.
+
+The median per-case MECC ratios are `0.9623x` versus row-major and `0.9990x` versus RCM. The aggregate result is not hiding a consistent large RCM loss.
 
 ## Interaction with cache policy
 
-These are aggregate MECC/baseline ratios within each policy.
+These are aggregate total-transfer ratios within each policy.
 
-| Policy | Bytes vs. spiral | Operations vs. spiral | Bytes vs. RCM | Operations vs. RCM |
+| Policy | MECC / row-major | RCM / row-major | MECC / RCM | MECC vs. RCM W/T/L |
 |---|---:|---:|---:|---:|
-| Belady-style | 0.434 | 0.833 | 0.519 | 0.912 |
-| LRU | 0.441 | 0.925 | 0.515 | 0.968 |
+| Belady-style | 0.9598 | 0.9600 | 0.9998 | 50 / 11 / 29 |
+| LRU | 0.9812 | 0.9849 | 0.9962 | 58 / 19 / 13 |
 
-MECC remains the aggregate byte winner under both policies. Its operation-count advantage is much more dependent on future-aware eviction: relative to its own Belady runs, LRU raises MECC's per-workload I/O count by 50.8% on average. This is consistent with DiskJoin's design, which composes Gorder with Belady rather than treating the eviction policy as incidental.
-
-Belady here means farthest-next-use eviction. It is optimal for one cache of equal-size objects, but remains a heuristic for unequal blocks and two coupled exclusive tiers.
+Under Belady-style eviction, MECC and RCM differ by only 0.02% in aggregate traffic. Under LRU, MECC is ahead by 0.38%. Belady here is farthest-next-use eviction; with equal-size objects it is optimal for one cache, but the simulator still has two coupled exclusive tiers.
 
 ## Effect of density
 
-The following are macro-averages of matched per-case ratios. The last columns count strict MECC wins over RCM out of 60 cases.
+The following compares MECC with grouped RCM within each density stratum.
 
-| Average D-row degree | Bytes vs. spiral | Ops vs. spiral | Bytes vs. RCM | Ops vs. RCM | Byte wins vs. RCM | Op wins vs. RCM |
-|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 0.743 | 0.819 | 0.877 | 0.969 | 36 / 60 | 33 / 60 |
-| 4 | 0.483 | 0.788 | 0.709 | 0.943 | 46 / 60 | 45 / 60 |
-| 16 | 0.400 | 0.879 | 0.447 | 0.927 | 60 / 60 | 54 / 60 |
+| Average D-row degree | Aggregate ratio | Change | MECC W/T/L |
+|---:|---:|---:|---:|
+| 1 | 0.9969 | 0.31% fewer | 23 / 22 / 15 |
+| 4 | 0.9731 | 2.69% fewer | 55 / 1 / 4 |
+| 16 | 1.0036 | 0.36% more | 30 / 7 / 23 |
 
-MECC's byte advantage grows with degree. Grouping all tasks for a 64 MiB D block gives that block one contiguous lifetime, while RCM may preserve more 16 MiB Q locality at the cost of repeatedly moving D blocks. At degree 16, MECC beats RCM on bytes in every case.
+MECC is strongest relative to RCM at degree 4. At degree 16, reserving one D block leaves only three Q slots and the Gorder window collapses to one; grouped RCM is slightly better in aggregate. Under LRU, many degree-16 cases approach two transfers per task regardless of group ordering because the small cache cannot retain useful Q neighborhoods.
 
-## Effect of row skew
+## Effect of D-row skew
 
-These macro-averages compare MECC with RCM.
+| Skew | Aggregate MECC/RCM ratio | Change | MECC W/T/L |
+|---|---:|---:|---:|
+| Uniform | 0.9974 | 0.26% fewer | 26 / 25 / 9 |
+| Moderate Zipf (`alpha=0.8`) | 0.9966 | 0.34% fewer | 34 / 4 / 22 |
+| High Zipf (`alpha=1.4`) | 0.9986 | 0.14% fewer | 48 / 1 / 11 |
 
-| Skew | Byte ratio | Operation ratio | Byte W/T/L | Operation W/T/L |
-|---|---:|---:|---:|---:|
-| Uniform | 0.648 | 0.914 | 40 / 20 / 0 | 36 / 20 / 4 |
-| Moderate Zipf (`alpha=0.8`) | 0.644 | 0.919 | 58 / 2 / 0 | 57 / 2 / 1 |
-| High Zipf (`alpha=1.4`) | 0.742 | 1.005 | 44 / 1 / 15 | 39 / 2 / 19 |
-
-High row skew weakens MECC's operation-count result: the macro-average is 0.5% worse than RCM and MECC loses 19/60 cases. Byte savings remain strong because the streamed object is the larger operand, but a few hot D rows generate long Q scans whose cache behavior is sensitive to eviction.
+The aggregate MECC-RCM difference stays below 0.4% for every skew stratum. High skew gives MECC more individual wins, but those wins are generally small.
 
 ## Largest-matrix detail
 
-The following uses Belady-style caching at `100000 x 100000`. Changes compare MECC with RCM; negative values favor MECC.
+The following uses Belady-style caching at `100000 x 100000`. Traffic is total movement across all tiers. Negative changes favor MECC.
 
-| Degree | Skew | Tasks | MECC TiB | RCM TiB | Total-byte change | Total-op change | SSD-byte change |
+| Degree | Skew | Tasks | Row-major TiB | MECC TiB | RCM TiB | MECC vs. RCM | MECC vs. row-major |
 |---:|---|---:|---:|---:|---:|---:|---:|
-| 1 | Uniform | 100,000 | 7.07 | 7.07 | 0.0% | 0.0% | 0.0% |
-| 1 | Moderate | 100,000 | 4.24 | 5.07 | -16.2% | -10.5% | -13.8% |
-| 1 | High | 100,000 | 1.83 | 2.57 | -28.9% | -3.9% | -10.8% |
-| 4 | Uniform | 400,000 | 11.02 | 20.76 | -46.9% | -19.5% | -46.2% |
-| 4 | Moderate | 400,000 | 11.38 | 18.57 | -38.7% | -12.7% | -31.6% |
-| 4 | High | 400,000 | 6.93 | 6.96 | -0.6% | -0.6% | -0.4% |
-| 16 | Uniform | 1,600,000 | 30.63 | 57.15 | -46.4% | -2.3% | -46.6% |
-| 16 | Moderate | 1,600,000 | 30.63 | 46.90 | -34.7% | -5.2% | -19.7% |
-| 16 | High | 1,600,000 | 26.99 | 76.51 | -64.7% | -17.7% | +53.6% |
+| 1 | Uniform | 100,000 | 12.40 | 9.97 | 9.97 | 0.00% | -19.60% |
+| 1 | Moderate | 100,000 | 9.26 | 8.35 | 8.48 | -1.54% | -9.89% |
+| 1 | High | 100,000 | 6.46 | 6.41 | 6.43 | -0.27% | -0.75% |
+| 4 | Uniform | 400,000 | 31.44 | 25.68 | 28.13 | -8.71% | -18.32% |
+| 4 | Moderate | 400,000 | 31.39 | 27.82 | 28.91 | -3.76% | -11.39% |
+| 4 | High | 400,000 | 25.42 | 25.27 | 25.38 | -0.45% | -0.59% |
+| 16 | Uniform | 1,600,000 | 107.69 | 105.06 | 103.34 | +1.67% | -2.44% |
+| 16 | Moderate | 1,600,000 | 107.18 | 104.02 | 103.74 | +0.27% | -2.95% |
+| 16 | High | 1,600,000 | 100.94 | 100.32 | 100.52 | -0.19% | -0.61% |
 
-The degree-16/high-skew case exposes the hierarchy tradeoff most clearly. RCM lowers SSD reads by retaining/reusing blocks through the 512 MiB victim tier, but incurs enough host/device movement to make total traffic 2.84x MECC's. A scheduler optimized only for SSD cache misses would select RCM; a scheduler charging every DMA byte would select MECC.
+The largest cases show that no scheduler dominates. MECC has a meaningful advantage for degree-4 uniform and moderate graphs, while RCM wins the degree-16 uniform and moderate cases. High-skew cases make all three D-group orders similar.
 
 ## Interpretation
 
-MECC wins the byte objective primarily because it gives each large D block a single contiguous task group. Once that group finishes, the D block has no future use and can be dropped instead of demoted. Gorder then tries to arrange neighboring D groups so their Q sets overlap within the device-cache window.
+The corrected experiment supports three narrower conclusions:
 
-This result strengthens the case for a weighted multi-tier scheduler, but it does not establish Gorder itself as the sole cause. DiskJoin-MECC combines D-row grouping and graph reordering, while the sweep has no “stream D in original order” ablation. That baseline is needed to separate the value of grouping from the additional value of neighbor-overlap ordering.
+1. D grouping is an execution-policy choice, not a unique MECC advantage. Giving RCM the same grouping removes the previous multi-fold traffic gap.
+2. Graph-aware D-group ordering helps over original row order, especially at degrees 1 and 4, but the gain depends strongly on cache policy and graph structure.
+3. MECC/Gorder and grouped RCM optimize different locality surrogates and are nearly tied overall. The strongest direction is therefore a cache- and tier-aware scheduler evaluated against both, not a claim that one of these two heuristics categorically dominates the other.
 
-The disagreement between SSD operations, SSD bytes, and total bytes also shows that MECC's original equal-bucket/single-cache objective is incomplete for SSD–RAM–VRAM execution. The next scheduler should assign different costs to D and Q blocks and to SSD reads, host promotions, and demotions instead of minimizing an unweighted cache-miss count.
+Scheduling overhead also differs. On the largest degree-16 uniform graph, row-major scheduling takes 2.35 seconds, grouped RCM 3.79 seconds, and MECC 8.25 seconds. These are trace-construction times only and are not included in the transfer metric.
 
 ## Limitations and next experiments
 
-- This is the MECC scheduling/cache component, not DiskJoin's full bucketization, pruning, CPU distance execution, or end-to-end runtime.
-- DiskJoin's equal-size, single-cache window rule is adapted to unequal blocks and VRAM; this adaptation should be called out in any paper comparison.
-- Add a streamed D-row-major/no-Gorder ablation to isolate graph reordering.
-- Add banded, clustered, and centroid-derived sparsity; current matrix coordinates carry no useful locality for spiral.
-- Add Q-side skew and correlated D/Q hotspots; current Q popularity is approximately uniform.
-- Vary D:Q block ratios and both cache capacities, including cases where Q is the larger relation.
+- This is trace-level scheduling and cache simulation, not DiskJoin's full bucketization or an end-to-end GPU runtime.
+- The primary sweep intentionally fixes equal-size blocks. Test asymmetric sizes later only as a separately justified sensitivity study, for example when D carries an index artifact.
+- Device capacity is only four blocks. Sweep cache capacities in block units to test whether the degree-16 convergence is a capacity artifact.
+- The primary comparison fixes D grouping. Run the supported Q-grouped RCM variant and transpose D/Q skew to test side choice.
+- Add Q-side skew, correlated D/Q hotspots, banded graphs, clustered graphs, and centroid-derived pruning patterns; current Q popularity is approximately uniform.
 - Repeat configurations across seeds and report confidence intervals.
-- Add request latency, coalescing, prefetch overlap, computation, and output traffic before making end-to-end claims.
-- Scheduling-time fields are not compared because prior RCM records span a scalability-fix checkpoint, although the schedule and I/O metrics remain valid.
+- Add latency, transfer overlap, compute, output traffic, and scheduling time before making end-to-end runtime claims.
+- Compare with a small-trace optimum or lower bound to measure how much opportunity remains beyond both heuristics.
 
 ## Reproduction
 
@@ -148,13 +164,16 @@ The disagreement between SSD operations, SSD bytes, and total bytes also shows t
 python3 Codes/simulation/test_schedule.py
 python3 Codes/simulation/benchmark_sweep.py --dry-run
 python3 Codes/simulation/benchmark_sweep.py --overwrite
+python3 Codes/simulation/summarize_sweep_csv.py
 ```
 
 Artifacts:
 
 - [`sweep_config.json`](sweep_config.json)
 - [`sweep_results.jsonl`](sweep_results.jsonl)
+- [`sweep_summary.csv`](sweep_summary.csv)
 - [`benchmark_sweep.py`](benchmark_sweep.py)
+- [`summarize_sweep_csv.py`](summarize_sweep_csv.py)
 - [`compare_spiral.py`](compare_spiral.py)
 - [`schedule.py`](schedule.py)
 - [`test_schedule.py`](test_schedule.py)

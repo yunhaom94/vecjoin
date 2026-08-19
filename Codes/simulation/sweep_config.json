@@ -1,5 +1,5 @@
 {
-  "description": "Spiral, DiskJoin's MECC approximation, and block-RCM on square sparse comparison matrices from 24x24 through 100000x100000. Density is parameterized by average surviving comparisons per D row so the largest matrices remain sparse and executable.",
+  "description": "D-grouped row-major, DiskJoin's MECC approximation, and D-grouped block-RCM on square sparse comparison matrices from 24x24 through 100000x100000. D and Q blocks have equal byte sizes, and every scheduler emits each D block's tasks contiguously so the sweep isolates D-group ordering. Density is parameterized by average surviving comparisons per D row so the largest matrices remain sparse and executable.",
   "matrix_sizes": [
     24,
     61,
@@ -42,7 +42,7 @@
   ],
   "block_sizes": {
     "d": "64MiB",
-    "q": "16MiB"
+    "q": "64MiB"
   },
   "cache": {
     "device_capacity": "256MiB",
@@ -54,7 +54,7 @@
     "victim_admission": "future"
   },
   "schedulers": [
-    "spiral",
+    "row-major",
     "diskjoin-mecc",
     "block-rcm"
   ],

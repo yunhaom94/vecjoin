@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a scalable spiral-versus-RCM sparse-matrix benchmark sweep.
+"""Run a scalable grouped-scheduler sparse-matrix benchmark sweep.
 
 The runner reads ``sweep_config.json`` by default and writes one JSON object per
 scheduler/cache-policy result.  Matrix density is expressed as average
@@ -7,9 +7,9 @@ nonzeros per row, so a 100000 x 100000 matrix can be represented without
 materializing its 10 billion cells.
 
 Skew controls the Zipf distribution of row degrees.  Zipf ranks are randomly
-assigned to physical row ids so skew is not accidentally correlated with the
-outside boundary used by the spiral schedule.  Each row's distinct columns are
-generated with a deterministic modular permutation.
+assigned to physical row ids so skew is not accidentally correlated with a
+scheduler's deterministic block-id tie breaking.  Each row's distinct columns
+are generated with a deterministic modular permutation.
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
 if __package__:
-    from .compare_spiral import sparse_spiral_schedule
     from .schedule import (
         AccessGraph,
         Block,
@@ -36,10 +35,10 @@ if __package__:
         diskjoin_mecc_schedule,
         format_bytes,
         parse_byte_size,
+        row_major_schedule,
         simulate_schedule,
     )
 else:
-    from compare_spiral import sparse_spiral_schedule
     from schedule import (
         AccessGraph,
         Block,
@@ -49,6 +48,7 @@ else:
         diskjoin_mecc_schedule,
         format_bytes,
         parse_byte_size,
+        row_major_schedule,
         simulate_schedule,
     )
 
@@ -381,7 +381,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             for profile in _require_list(config, "skew_profiles")
         ]
         scheduler_names = [str(name) for name in _require_list(config, "schedulers")]
-        known_schedulers = {"spiral", "diskjoin-mecc", "block-rcm"}
+        known_schedulers = {"row-major", "diskjoin-mecc", "block-rcm"}
         unknown_schedulers = set(scheduler_names) - known_schedulers
         if unknown_schedulers:
             raise ValueError(f"unknown schedulers: {sorted(unknown_schedulers)}")
@@ -401,7 +401,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if victim_admission not in {"none", "future", "always"}:
             raise ValueError("invalid victim-admission policy")
         scheduler_functions: dict[str, Callable[[AccessGraph], tuple[Task, ...]]] = {
-            "spiral": sparse_spiral_schedule,
+            "row-major": row_major_schedule,
             "diskjoin-mecc": lambda graph: diskjoin_mecc_schedule(
                 graph, device_capacity
             ),

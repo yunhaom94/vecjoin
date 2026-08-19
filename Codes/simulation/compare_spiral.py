@@ -235,7 +235,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--d-blocks", type=int, default=24)
     parser.add_argument("--q-blocks", type=int, default=24)
     parser.add_argument("--d-block-size", type=parse_byte_size, default=parse_byte_size("64MiB"))
-    parser.add_argument("--q-block-size", type=parse_byte_size, default=parse_byte_size("16MiB"))
+    parser.add_argument("--q-block-size", type=parse_byte_size, default=parse_byte_size("64MiB"))
     parser.add_argument("--edge-probability", type=float, default=0.12)
     parser.add_argument("--device-capacity", type=parse_byte_size, default=parse_byte_size("256MiB"))
     parser.add_argument("--host-capacity", type=parse_byte_size, default=parse_byte_size("512MiB"))

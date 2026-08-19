@@ -23,7 +23,7 @@ An input JSON file has this shape (sizes may also be strings such as ``64MiB``):
 
    {
      "d_blocks": [{"id": "D0", "size": "64MiB"}],
-     "q_blocks": [{"id": "Q0", "size": "16MiB"}],
+     "q_blocks": [{"id": "Q0", "size": "64MiB"}],
      "edges": [["D0", "Q0"]]
    }
 
@@ -456,7 +456,15 @@ def validate_schedule(graph: AccessGraph, schedule: Sequence[Task]) -> None:
 
 
 def row_major_schedule(graph: AccessGraph) -> tuple[Task, ...]:
-    return tuple(sorted(graph.tasks))
+    return tuple(
+        sorted(
+            graph.tasks,
+            key=lambda task: (
+                _block_order_key(task.d_block),
+                _block_order_key(task.q_block),
+            ),
+        )
+    )
 
 
 def random_schedule(graph: AccessGraph, seed: int) -> tuple[Task, ...]:
@@ -699,8 +707,22 @@ def _reverse_cuthill_mckee(
     return result
 
 
-def block_rcm_schedule(graph: AccessGraph) -> tuple[Task, ...]:
-    """Run RCM on the block graph, then sweep unscheduled incident tasks."""
+def block_rcm_schedule(
+    graph: AccessGraph,
+    *,
+    group_side: str = "D",
+) -> tuple[Task, ...]:
+    """Run block RCM, then emit one contiguous task group per chosen-side block.
+
+    RCM produces a vertex order, not an edge order.  To compare its ordering
+    fairly with DiskJoin's grouped streaming trace, filter the RCM order to one
+    relation and emit all tasks for each of those blocks consecutively.  Tasks
+    inside a group follow the opposite endpoints' positions in the full RCM
+    order.  ``D`` is the default streaming/grouping side used by the sweep.
+    """
+
+    if group_side not in {"D", "Q"}:
+        raise ValueError("RCM group side must be D or Q")
 
     adjacency: dict[str, set[str]] = {name: set() for name in graph.blocks}
     incidence: dict[str, list[int]] = defaultdict(list)
@@ -715,14 +737,15 @@ def block_rcm_schedule(graph: AccessGraph) -> tuple[Task, ...]:
         used_nodes,
         neighbors=lambda name: adjacency[str(name)],
         degree=lambda name: len(adjacency[str(name)]),
-        stable_key=str,
+        stable_key=lambda name: _block_order_key(str(name)),
     )
     position = {str(name): index for index, name in enumerate(order)}
 
-    scheduled: set[int] = set()
     result: list[Task] = []
     for raw_name in order:
         name = str(raw_name)
+        if graph.blocks[name].side != group_side:
+            continue
 
         def incident_key(task_index: int) -> tuple[int, str, str]:
             task = graph.tasks[task_index]
@@ -730,9 +753,7 @@ def block_rcm_schedule(graph: AccessGraph) -> tuple[Task, ...]:
             return (position[other], task.d_block, task.q_block)
 
         for task_index in sorted(incidence[name], key=incident_key):
-            if task_index not in scheduled:
-                scheduled.add(task_index)
-                result.append(graph.tasks[task_index])
+            result.append(graph.tasks[task_index])
 
     validate_schedule(graph, result)
     return tuple(result)
@@ -956,7 +977,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--d-blocks", type=int, default=24)
     parser.add_argument("--q-blocks", type=int, default=24)
     parser.add_argument("--d-block-size", type=parse_byte_size, default=parse_byte_size("64MiB"))
-    parser.add_argument("--q-block-size", type=parse_byte_size, default=parse_byte_size("16MiB"))
+    parser.add_argument("--q-block-size", type=parse_byte_size, default=parse_byte_size("64MiB"))
     parser.add_argument("--edge-probability", type=float, default=0.12)
     parser.add_argument("--device-capacity", type=parse_byte_size, default=parse_byte_size("256MiB"))
     parser.add_argument("--host-capacity", type=parse_byte_size, default=parse_byte_size("512MiB"))
