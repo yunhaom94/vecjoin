@@ -184,3 +184,128 @@ The two mechanisms compose multiplicatively, since a pruned block pair skips bot
 At 1e-6 selectivity on a 4090, that takes the 500M × 500M projection from **17.9 days to roughly 17 hours** — all exact, 100 % recall, no approximation anywhere.
 
 Three caveats. The 58 % was measured at 256 blocks on a 32768 sample; re-measure at production granularity, where it should improve. The projection-filter kernel's achieved throughput is modelled from instruction counts, not measured — a K=8 GEMM has low arithmetic intensity and may land bandwidth-bound. And the external sort in Phase 0.4 is a real engineering cost that none of the compute models include.
+
+#
+
+Panorama looks like the closest modern analogue to the projection bound. Let me read it and the third paper.
+
+Panorama's bound *is* the projection bound — with an orthogonal transform, the "discarded suffix" is exactly the orthogonal complement. Let me trace the lineage further.
+
+This EDBT 2026 survey is directly on point. Let me fill in the join-side and GPU-side literature.
+
+Your premise doesn't survive the search: **both methods are extensively published and well received.** What's absent is the specific combination you built. Here's the map.
+
+## The projection bound has at least four independent published lineages
+
+**1. All-pairs similarity search (2007–2016).** [L2AP](http://davidanastasiu.net/pdf/papers/2014-AnastasiuK-ICDE-l2ap.pdf) (Anastasiu & Karypis, ICDE 2014) proposes "ℓ2-norm bounds… leveraging the Cauchy-Schwarz inequality" to bound the dot product of the *unindexed suffix*. That is your bound with P = coordinate-prefix projection. It has parallel (PL2AP) and kNN-graph (L2Knng) descendants.
+
+**2. Vertical decomposition / partial distance (2002–2025).** BOND, [PCA-based branch-and-bound](https://www.sciencedirect.com/science/article/abs/pii/S0167865502003847), Progressive Partial Distance, and [PDX/PDX-BOND](https://arxiv.org/pdf/2503.04422) (PACMMOD 2025).
+
+**3. Distance-Comparison-Operation optimization for ANN (2023–2026).** ADSampling, FINGER, DADE (= ADSampling with PCA instead of random projection), DDC_res/DDC_pca, RaBitQ.
+
+**4. [Panorama](https://arxiv.org/html/2510.00566) (2025) — essentially your exact formulation.** Orthogonal transform, then Cauchy-Schwarz on the tail:
+
+`LB = R(q) + R(x) − 2(p^(0,ℓ) + √(R_tail(q)·R_tail(x)))`
+
+For unit vectors that reduces to ⟨x,y⟩ ≤ ⟨Px,Py⟩ + ρ_xρ_y — your bound, character for character. (The summarizer called it "Cauchy-Schwarz on the suffix, not a projection bound"; with an orthogonal transform those are the same object.) It reports 3.2–18.7× on IVFFlat, 28.9× on IVFPQ, and adds a relaxation knob ε∈[0,1] you don't have.
+
+**SimHash** is Charikar (STOC 2002) and Manku et al. (WWW 2007), deployed at Google for web-scale near-duplicate detection. Thousands of citations. It's canonical, not neglected.
+
+## So why doesn't your configuration appear?
+
+**The community optimizes a different query.** The [EDBT 2026 DCO survey](https://openproceedings.org/2026/conf/edbt/paper-270.pdf) (Wang et al., ECNU) benchmarks 12 of these methods and lands on a blunt finding: *"SIMDized HNSW outperforms advanced DCO optimizations… the superiority of DCO optimizations relative to FDScanning diminishes when confronted with the powerful parallel computing capabilities of modern CPUs."* Once a graph index has cut candidates to a few hundred, saving dimensions on each doesn't pay.
+
+**On CPUs the bound fights the hardware.** Same survey: projection pruning *"relies on vector projection and threshold comparisons, operations that are not fully amenable to SIMD parallelization,"* and *"hypothesis testing in projection sampling disrupts branch-free linear data flow, resulting in a significant increase in branch prediction errors."* DDC_res showed a **6.8× increase in branch mispredictions** on OpenAI embeddings. That is precisely the objection your implementation sidesteps — `__ballot_sync` turns the predicate into a branch-free vote, and the ballot kernel has *one* barrier and no divergent control flow in the FMA stream (which is exactly why decoupling the emission logic bought 10 %).
+
+**And the survey says your regime is the one where it *does* pay.** On IVF — which exhaustively scans candidates — *"all DCO optimizations show substantial acceleration across all datasets… DCO optimization is more important when DCOs become the bottleneck."* They measure DCOs at 77.2 % of HNSW time and 85 % of IVF time. An ε-join is IVF's exhaustive scan taken to the limit: no index, every pair examined, filter is 95 % of the cost. You are on the far end of the axis where the survey says the technique wins, and nobody benchmarked there.
+
+**The dense/sparse split stranded it.** AllPairs and L2AP built the bound for *sparse* vectors, where an inverted index makes candidate generation cheap. For dense embeddings the inverted index is useless, so the whole APSS apparatus doesn't transfer — and the bound was left behind with the apparatus rather than being reconsidered on its own.
+
+**The GPU join literature went elsewhere.** [Gowanlock et al.](https://arxiv.org/abs/1809.09930) use grid-based indices, which collapse above ~6 dimensions. The tensor-core line (TED-Join; [mixed-precision ICPP 2025](https://arxiv.org/pdf/2508.21230), 2.5–51× at 128–960 D) makes the brute force *faster* rather than pruning it. Nobody combined "exact projection bound" with "GPU dense join." The EDBT survey explicitly excludes GPU/FPGA work as *"not directly comparable… specific to hardware platforms that differ substantially from modern CPUs."*
+
+**Joins themselves went approximate.** All three papers you linked are approximate: [Fast Approximate Similarity Join in Vector Databases](https://dl.acm.org/doi/10.1145/3725403) (Xie, Yu, Liu, SIGMOD 2025 — I could only recover metadata, the PDF wouldn't parse); [Work Sharing and Offloading for Approximate Threshold-based Vector Join](https://arxiv.org/html/2603.16360v1) (Kim et al., EPFL, PVLDB — NSG-based, up to 32.6× from a merged index); [DiskJoin](https://arxiv.org/abs/2508.18494) (SIGMOD 2026 — SSD-resident, "probabilistic pruning," no recall guarantee; the abstract doesn't say what the pruning is). An *exact* ε-join is out of fashion, so an exact bound has no natural home.
+
+## Honest assessment of what you have
+
+**The bound is not novel.** Panorama has it in your exact form; L2AP has the coordinate-projection special case; the unit-norm simplification is folklore. If you write this up, the bound is related work, not contribution.
+
+**What isn't in the literature, as far as I can find:**
+- The negative result that on Deep, set-level/IVF-style ball pruning prunes **0.0 %** at 96-d, 16-d and 8-d alike, while the identical bound applied per-pair prunes 99.98 % — the failure is bounding balls, not dimension.
+- The GPU finding that a K=8 mainloop is epilogue-bound, that CUTLASS's pipeline is the wrong structure there, and that a register-resident ballot kernel beats it by 1.5× at 14.4 T FMA/s — with the crossover back to the GEMM at k≈20.
+- The output-format result: a dense bitmask puts a σ-independent floor under refinement (15 s on Deep10M), and switching to a compact survivor list moves the optimal k from 8 to 12 and the end-to-end from 7.0× to 12.7×.
+
+That's a systems contribution in a gap, not a new bound — DaMoN/EDBT/ICPP territory rather than SIGMOD.
+
+**Two caveats before believing your own numbers.** Everything is one dataset (Deep10M, 96-d, exactly unit-norm, ε tuned to ~1e-6 selectivity). Panorama's speedups *grow* with dimension because PCA energy concentrates more; yours might not, since your filter cost grows with k and your own sweep showed CUTLASS overtaking the ballot kernel around k=20. And your baseline is your own brute-force GEMM, not a tuned competitor — the honest comparison is against TED-Join or the mixed-precision tensor-core join, which attack the same problem by making the brute force fast instead of avoiding it.
+
+**Sources:** [L2AP (ICDE 2014)](http://davidanastasiu.net/pdf/papers/2014-AnastasiuK-ICDE-l2ap.pdf) · [Panorama](https://arxiv.org/html/2510.00566) · [EDBT 2026 DCO survey](https://openproceedings.org/2026/conf/edbt/paper-270.pdf) · [PDX (PACMMOD 2025)](https://arxiv.org/pdf/2503.04422) · [Fast Approximate Similarity Join (SIGMOD 2025)](https://dl.acm.org/doi/10.1145/3725403) · [Work Sharing for Vector Join](https://arxiv.org/html/2603.16360v1) · [DiskJoin](https://arxiv.org/abs/2508.18494) · [GPU self-join](https://arxiv.org/abs/1809.09930) · [Tensor-core Euclidean distance](https://arxiv.org/pdf/2508.21230) · [DR survey for ANN](https://arxiv.org/html/2403.13491v2) · [Data-aware DCO](https://arxiv.org/pdf/2411.17229) · [Elastic HNSW vs LSH](https://www.elastic.co/blog/understanding-approximate-nearest-neighbor-search)
+
+#
+
+Let me re-derive this with measurements rather than from memory, since the reframing depends on the exact mechanism.
+
+Two things jump out. Balls prune 0.00 % even for k-means at exactly DiskJoin's 0.1 % cluster size — and the box prune is **identical for k=1 through k=32**. That second fact is the key to the reframing, so let me test it.
+
+A 2-D k-d tree already beats the 1-D sort (64.95 % vs 56.94 %), and crucially the gap *widens* with more blocks. Let me find where it peaks.
+
+1-D sorting saturates at 58.8 % no matter how fine the blocks; the k-d tree keeps improving to 85.5 %. Let me establish the asymptotic ceiling and verify exactness empirically.
+
+Here's the full mechanism, measured, plus a reframing that I think does work as a positive result.
+
+## Why balls fail
+
+The ball prune fires only when `‖cᵢ−cⱼ‖ − rᵢ − rⱼ > √ε = 0.2095`. Measuring all three terms on Deep10M:
+
+| partition | mean r | max ‖cᵢ−cⱼ‖ | mean margin | **best** margin | pruned |
+|---|---|---|---|---|---|
+| PC1 blocks, 96-d ball | 1.061 | 1.145 | −1.733 | −0.771 | 0.00 % |
+| PC1 blocks, 8-d proj ball | 0.823 | 1.116 | −1.274 | −0.174 | 0.00 % |
+| PC1 blocks, 16-d proj ball | 0.887 | 1.127 | −1.394 | −0.313 | 0.00 % |
+| k-means K=1024 (0.098 % of n) | 0.961 | 1.397 | −0.989 | −0.282 | 0.00 % |
+
+Mean pairwise distance is 1.359 with **std/mean = 0.086**. The margin isn't marginally negative — the single most-separated pair out of 524k k-means cluster pairs still falls **0.49 short** of the threshold.
+
+The arithmetic is forced. All points lie on the unit sphere, so centroids sit inside the unit ball and `‖cᵢ−cⱼ‖ ≤ 2` with an observed max of 1.40. Meanwhile a cluster of 9,765 points has radius 0.96 — **71 % of the mean pairwise distance** — so `rᵢ+rⱼ ≈ 1.92` already exceeds any achievable centroid separation. There is no cluster size that fixes this: shrinking clusters shrinks r far too slowly under concentration, and growing them shrinks centroid separation.
+
+**Two distinct failure modes reach the same 0 %:**
+
+- **Anisotropy** (sorted blocks). A PC1-sorted block is a thin slab: narrow in PC1, full-width in the other 95 axes. Its radius is set by the *widest* axis, so the ball throws away precisely the one direction carrying information. Radius 1.06 while the PC1 extent is a few percent of the range.
+- **Concentration** (k-means clusters, which are roughly isotropic). Even at DiskJoin's recommended 0.1 % cluster size, the radius saturates near the dataset scale because distances concentrate.
+
+**Why dimension is not the variable:** projecting to 8-d or 16-d changes nothing (still 0.00 %). Both mechanisms survive projection. The real statement is about **max versus typical** — a ball summarises a set by one scalar, the maximum over its members, and under concentration that maximum saturates at the global scale. The per-pair bound uses each point's *own* residual ρₓ, which sits far below the set maximum. Same inequality, different quantity substituted in.
+
+## The positive reframing: shape, not dimension
+
+Replace the ball with an axis-aligned box in the projected subspace — prune iff `Σ_d gap_d² > ε`. Still exact, since `Σ gap_d² ≤ ‖Px−Py‖² ≤ ‖x−y‖²`.
+
+On PC1-sorted blocks this prunes 56.9 % — but **identically for k=1 through k=32**. Adding dimensions adds nothing, because those blocks are organised along one axis only, so `gap_d = 0` for every d ≥ 2. The bound was never the limitation; **the partition was.**
+
+Fixing the partition (k-d tree, median splits cycling the top nd projected dims):
+
+| blocks | pts/blk | 1-D sort | kd-2 | **kd-3** | kd-4 |
+|---|---|---|---|---|---|
+| 128 | 78,125 | 56.94 % | 64.95 % | 60.30 % | 51.05 % |
+| 1024 | 9,765 | 58.60 % | 75.25 % | **77.94 %** | 73.89 % |
+| 8192 | 1,220 | 58.80 % | 78.61 % | **85.46 %** | 85.44 % |
+
+**1-D sorting saturates at 58.8 %** — and that is not an artifact. The asymptotic ceiling as blocks vanish is `1 − Pr[‖P_nd x − P_nd y‖ ≤ √ε]`, which I measured directly:
+
+| nd | 1 | 2 | 3 | 4 | 6 | 8 |
+|---|---|---|---|---|---|---|
+| ceiling | **58.65 %** | 80.55 % | 92.03 % | 96.62 % | 99.47 % | 99.89 % |
+
+The measured 58.80 % at 8192 blocks matches the nd=1 ceiling of 58.65 % — theory and measurement close. A 1-D sort cannot exceed it at any granularity, while each extra partitioned axis raises the ceiling steeply. The practical constraint is that L levels give only L/nd splits per axis, and gaps need ~3 splits per axis, so the optimum is **nd ≈ L/3** — which is exactly why kd-2 wins at 128 blocks and kd-3/4 win at 8192.
+
+**Exactness verified empirically, not just algebraically:** I brute-forced 40 pruned block pairs in full 96-d — 3.81 billion pairs — and the smallest d² found inside any of them was **0.291, 6.6× above the 0.0439 threshold**. No true pair was pruned.
+
+## Is this publishable? Yes, and it's the strongest thing in this line of work
+
+It has the shape a good negative-result paper needs: a clean falsification, a mechanism, a matching quantitative law, and a constructive fix.
+
+> Set-level pruning for ε-joins fails for bounding balls at every granularity and every dimension tested (0.00 % on Deep10M, including k-means at the recommended 0.1 % cluster size) — not because of ambient dimension, but because a ball summarises a set by a maximum that saturates under distance concentration. The same exact bound on axis-aligned boxes, with a partition organised along the same axes, prunes 85.5 % at 100 % recall. The determinant is the shape of the set summary and its alignment with the partition. A 1-D sort saturates at exactly the `1 − Pr[|u_x−u_y| ≤ √ε]` ceiling; each additional partitioned axis raises that ceiling steeply.
+
+That also repositions your PC1 sort — currently presented as "the thing that works" — as a special case leaving most of the available pruning on the table.
+
+**Projected impact, flagged as projected.** At 1024 blocks with kd-3, kept drops from 43.7 % to 22.1 %: about 2× less filter work, so ~18.8 s → ~10 s, taking end-to-end from 12.7× to roughly 24× over brute force. **I have not run this through the actual pipeline** — it's inferred from the kept fraction — and it's the obvious next experiment. Two things could eat it: re-partitioning requires a gather (one-time), and finer blocks multiply kernel launches (115k at 1024 blocks is fine at ~0.6 s; 8192 blocks would need 4.9M launches and would demand a persistent work-queue kernel before the 85 % prune rate is realisable).
+
+**Caveats for the write-up.** One dataset, one ε. The concentration ratio (std/mean = 0.086) and the PC spectrum drive every number here, so the claim to make is the *mechanism* plus the ceiling formula — both of which transfer — rather than the specific percentages.
