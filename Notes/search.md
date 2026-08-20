@@ -367,3 +367,147 @@ Bounding balls prune **0.00 %** at every granularity and dimension tested, inclu
 **To make it publishable, in priority order:** run the authors' FAsTED/GDS-Join/TED-Join code as real baselines; add 3–4 datasets including a high-dimensional text-embedding set and a non-normalized one; sweep ε across selectivities; build the work-queue kernel; extend to bipartite joins. Venue: DaMoN / EDBT / ICPP, not SIGMOD — the exact-join framing has no constituency there.
 
 If I had to pick one title: *"Exact ε-joins on GPUs: bounding balls don't work, boxes do."* The negative result is the part that's genuinely new, and it's strong enough to carry the paper on its own.
+
+#
+
+Here's the revised framework. I'll be bold where the data licenses it, and I'll flag the one place where boldness died on contact with a derivation — because that failure reshapes the whole approximate-join story.
+
+## The unifying thesis
+
+Everything we measured points at one principle:
+
+> **Under distance concentration, the metric-space toolkit — balls, pivots, triangle inequality — is dead, because it summarizes sets and pairs by *distances to references*, and those concentrate. The linear-algebra toolkit — energy-ordered projections, boxes, residual norms — survives, because it summarizes by *coordinates*, and PCA deliberately de-concentrates the leading ones.**
+
+Balls prune 0.00 % while boxes on the same data prune 85 %; that's the measured instance. The untested prediction that falls out: **pivot/LAESA-style bounds `|d(x,ℓ)−d(y,ℓ)|` also prune ≈0 %** on Deep, because d(·,ℓ) concentrates for any pivot ℓ. One evening to confirm, and it generalizes the negative result from "balls fail" to "the entire reference-distance family fails" — a much stronger paper claim.
+
+## A new analytical result that kills the obvious knob
+
+The tempting Pareto knob is uniform relaxation: replace the Cauchy–Schwarz term ρₓρᵧ with λρₓρᵧ, λ<1, and buy runtime with recall (Panorama's ε-knob, transplanted). **This is wrong, and provably so.** Write cos θ for the angle between residuals. For a *true* pair, d² ≤ ε forces ‖rₓ−rᵧ‖² ≤ ε, hence
+
+cos θ ≥ (ρₓ²+ρᵧ²−ε)/(2ρₓρᵧ) ≈ 1 − ε/(2ρ²) ≈ **0.96** at k=12.
+
+So C-S is *nearly tight exactly on the pairs we must keep*; the overshoot lives entirely on far pairs (random residuals, cos θ ~ 0 ± 1/√(D−k) ≈ 0.11). Any uniform λ < 0.96 destroys recall; any λ ≥ 0.96 buys nothing. The bound's looseness and its recall-criticality live on disjoint pair populations.
+
+That's a small, sharp, publishable observation — and it dictates the correct design:
+
+## The bounds that do work
+
+**1. Sketch-refined residual bound (the FINGER-for-joins bound).** Since true pairs have cos θ ≈ 0.96 and false survivors have cos θ ≈ 0.1, the right move is an *estimator* of cos θ, not a relaxation. Store a B-bit sign sketch of each residual; then bound
+
+⟨x,y⟩ ≤ ⟨Px,Py⟩ + ρₓρᵧ·min(1, cos(π·max(0, h/B − m)))
+
+with h the Hamming distance and m a confidence margin. Binomial tails give a *closed-form* recall as a function of (B, m). True pairs pass untouched; the cos θ≈0.1 false-survivor population is annihilated. FINGER (2023) uses this decomposition to *estimate* distances for HNSW edge traversal — ours differs in being an upper confidence bound (recall-controlled, not just an estimate) in a batch join. Cost analysis from our own measurements: fused into a k=4 kernel it plausibly lands at **~1.7× over the exact pipeline at 99.9 % predicted recall**. Not more — see the frontier shape below.
+
+**2. Guard-banded FP16 tensor-core filter — an *exactness-preserving* speedup.** We measured FP16's max distance error at 7.2e-4 on this data. Widen the filter threshold by that guard band, run the k=16 filter on tensor cores (`m16n8k16`, projected coords are in [−1,1], ideal for FP16), refine exactly. Recall stays 1.0 by construction; the guard band costs +4.6 % candidates. The filter is 95 % of pipeline cost and our mma-only ablation ran at 77 TFLOPS vs the SIMT kernel's ~14 — even with the ballot epilogue intact, 2–3× on the filter is realistic. **The ironic headline: the precision knob buys more when used exactly (guard-banded) than when used approximately (raw FP16), because raw FP16's recall loss saves only the refine, which is 4 % of cost.**
+
+**3. Fused hierarchical box pruning.** The kd-3 result (73.9 % prune, but eaten by launch granularity) plus the ceiling law (85 %+ available at 8192 blocks) say the prune wants *fine* granularity while the kernel wants *coarse* launches. Resolution: one persistent launch over a work queue, with per-tile boxes tested *inside* the kernel before the mainloop — a two-level BVH baked into the join. This is exact, removes the measured 1.33× granularity penalty, and chases the 85 % ceiling. Projected ~10–11 s total (flagged: projection, and my last granularity projection was wrong by 2×).
+
+**4. ε-parametric output for free.** Emit (i, j, d²) — 12 bytes/survivor — and the join becomes *parametric in ε*: any threshold below the filter's ε is a post-hoc scan. No ANN-index join can do this; their candidate generation is threshold-tuned. One line of code, a real capability.
+
+## The calibration layer — the conceptual contribution
+
+Every approximate knob's recall is governed by one measured scalar: the **pair density at the threshold**, dN/d(d²) = 4.81e9 on Deep10M. Expected false negatives = density × ∫(error tail). We already validated this once without noticing: it predicted FP16's misclassifications at ~48k, and we measured 48,206. The knobs — (k, B, m, precision, guard band) — all have analytic error distributions (Gaussian residual tails, binomial sketch tails, rounding models), so the whole Pareto frontier is **predictable before running the join**. This matters specifically for joins: you cannot tune recall against ground truth when ground truth *is the query output* — but density is estimable from a 10⁴-point sample in seconds. As far as I found in the survey, Panorama, ADSampling, and every joined ANN method tune empirically. "Calibrated, not tuned" is the framing.
+
+## The predicted shape of the frontier — and the contrarian finding
+
+Our cost structure: filter 95 %, refine 4 %. Therefore:
+
+- Knobs that sacrifice recall to shrink the **refine** (raw FP16, λ-style relaxations) buy ≈ nothing.
+- Knobs that shrink the **filter** (lower k rescued by sketches, TC precision, better pruning) buy real time — and two of the three can be made exact.
+
+So the frontier is **flat near recall = 1**: exact ≈ 1.1–1.7× the cost of 99 %-recall. Contrast with graph/ANN-index joins (Kim et al., Xie et al.), where the last percent of recall is the *expensive* part — OOD queries, disconnected in-range regions, search-range expansion. The two frontier families **cross**: index-based joins dominate at low recall/low selectivity, filter-based joins dominate at high recall, and the crossover sits high (my guess: recall ≈ 0.95–0.99; measuring it is the paper's centerpiece plot — theirs curving up as recall→1, ours anchored flat at 1.0). Bonus asymmetry worth one paragraph: box pruning is distribution-agnostic, so our frontier is OOD-robust where graph-based frontiers demonstrably degrade.
+
+## Status table
+
+| idea | kind | status | killer experiment |
+|---|---|---|---|
+| Reference-distance bounds all fail | analytical + empirical | balls measured; pivots predicted | LAESA-style prune on Deep (~0 % expected) |
+| C-S tight-on-true-pairs (λ is dead) | analytical | derived above | histogram cos θ \| true vs \| survivor |
+| Sketch-refined residual bound | algorithmic (FINGER-adapted) | designed | fuse into k=4 kernel; measure recall vs binomial model |
+| Guard-banded TC filter | algorithmic, exact | components measured (77 TFLOPS mma, 7.2e-4 error) | build it; epilogue may eat the gain (it took 54 % in tc.cu) |
+| Fused tile-BVH work-queue | systems, exact | prune ceiling measured | build; verify 85 % realisable |
+| Density calibration | conceptual | one instance validated (FP16) | validate across (B,m) and k knobs |
+| Flat frontier / crossover vs ANN joins | empirical claim | cost-structure evidence | run Kim/Xie code on Deep10M at matched recall |
+
+## Contributions, restated
+
+1. **Analytical:** the concentration argument for why reference-distance bounds fail wholesale; the tightness characterization killing uniform relaxation; the prune-ceiling law; density-based recall calibration.
+2. **Algorithmic:** the sketch-refined residual bound; the guard-banded exact TC filter; fused hierarchical box pruning; parametric-ε output.
+3. **Empirical:** the frontier-flatness/crossover claim — which, if it survives contact with the authors' own baselines, is the finding that gives the paper a thesis rather than a bag of speedups: **for GPU filter-based joins, exactness is nearly free; approximation is the wrong axis, and the literature has been optimizing it because indexes made recall expensive.**
+
+The single highest-risk item is the flat-frontier claim (it rests on our 95/4 cost split generalizing across datasets and ε); the single highest-value cheap experiment is the pivot-bound measurement, which upgrades the negative result from an observation about balls to a theorem-shaped statement about an entire family of methods.
+
+#
+
+The README gives the shape; the real insights are in the code. Let me clone it and read the actual scanner implementation.
+
+This is a Meta-copyrighted file styled as a Faiss contribution — worth confirming upstream status later. Now the core kernel:
+
+This is the core file, and it's dense with transferable detail. Let me check three more things: level-width selection, the scanner's threshold dynamics, and whether any GPU path exists.
+
+Cloned it and read the implementation. The insights are substantial — one repositions the whole landscape, several validate our kernel decisions from an independent direction, and one sharpens my earlier "λ is dead" derivation into a quantitative regime law.
+
+## 1. Panorama is now upstream in Faiss — the bound became infrastructure
+
+The fork's files carry Meta copyright headers, and `IndexIVFFlatPanorama.h` **returns HTTP 200 from `facebookresearch/faiss` main**. This changes positioning: the projection/C-S bound is no longer a research artifact, it ships in the default vector-search library. Two gaps confirmed at code level, not paper level: `grep -ril panorama faiss/gpu` → **empty** (no GPU path anywhere), and there is **no `range_search` implementation** — kNN heap handlers only. Our work is precisely "the GPU ε-join counterpart of what Faiss now ships for CPU kNN," and that's a sentence a reviewer can verify in the upstream tree.
+
+## 2. Convergent engineering — they hit our three kernel lessons independently on CPU
+
+This is the strongest validation in the repo, in [Panorama.h](/tmp/claude-1000/-home-shukui-Documents-research-vess/1093ac1d-a30a-462a-8835-0f8f333b8ee0/scratchpad/panorama/faiss/faiss/impl/Panorama.h):
+
+- **Decouple arithmetic from selection.** Their optimized kernel is two-pass: a batched, autovectorized dot-product pass (`compute_level_dot_products_flat`, batch-of-4 ILP), then a separate prune+compact pass. They keep the fused branchy loop in-tree as an ablation named `progressive_filter_batch_unoptimized` — the exact structure whose removal bought us ~10 % in the ballot kernel.
+- **Branchless masks instead of per-candidate branches.** `prune_level_kernel` writes a `keep_mask`, then `compact_active_pext` compacts with BMI2 `_pext_u64` + AVX2 permute. That is the CPU analogue of our `__ballot_sync` + warp scan. Notably, this directly answers the EDBT survey's "projection pruning causes 6.8× branch mispredictions" critique — the survey benchmarked implementations without this engineering.
+- **Compile-time shape dispatch.** `FixedWidth` template dispatch (widths 8–128 step 8) pins the query in zmm registers — our `KDIM` template, same reasoning. Plus a `Direct` template for level 0 where indices are identity, because vectorization dies on gather — mirroring our dense-filter/gathered-refine split.
+
+Same bound, different hardware, same three fixes. That's a design-principles section that writes itself.
+
+## 3. The ε knob confirms — and quantifies — the join/kNN regime split
+
+Their relaxation is exactly the uniform λ I derived as dead for joins: [Panorama.h:263](/tmp/claude-1000/-home-shukui-Documents-research-vess/1093ac1d-a30a-462a-8835-0f8f333b8ee0/scratchpad/panorama/faiss/faiss/impl/Panorama.h) computes `lower_bound = exact − ε·cauchy_schwarz_bound`. It demonstrably works for their kNN setting and my derivation says it can't for ours. Both are right, and the code makes the reconciliation exact: for a pair at distance d², the residual alignment satisfies cos θ ≥ 1 − d²/(2ρ²), so the **relaxation headroom is d²/(2ρ²)**. At their operating point (k-th NN distance² ≈ 1.0 on Deep) that's ~88 % — a rich knob. At our ε = 0.044 it's ~4 % — nothing. One formula explains why the knob is load-bearing in Faiss and dead in our joins; that's a much stronger statement than "their knob doesn't transfer."
+
+Related structural contrast: their `handler.threshold` is the running k-th distance — it *tightens during the scan*, which compounds their pruning but makes the loop serially dependent per query. A join's threshold is static — no adaptive tightening, but total parallelism, which is what lets us use tile/GEMM shapes at all.
+
+## 4. Implementation details worth stealing outright
+
+- **Level-major batched layout** (batch = 128 vectors, dims level-major within batch) with **suffix norms stored per level in the same transposed layout** — cost (L+1) floats/vector. This is the data structure a multi-level GPU cascade filter would need; we currently store a single ρ (one level). Their layout answer to "gather kills vectorization" is the CPU version of our smem staging.
+- **Level widths are uniform ceiling-division** — `(d + n_levels − 1) / n_levels` — *not* energy-adaptive, despite the README's phrasing. All adaptivity comes from PCA ordering. Simplifies our design space: they didn't need adaptive boundaries either.
+- **Variance shaping is real and tunable** (benches/transforms.py): an α-capped "energy spill" rotation plus Haar isotropization within levels, deliberately *flattening* PCA concentration so PQ's uniform bit budget fits. Insight for us: bound tightness and quantizer/precision friendliness are opposed. Our FP16 guard band is dominated by level-0 coordinate magnitudes — a mild α-cap rotation could shrink it. Same trick, different consumer.
+- **They report `ratio_dims_scanned` alongside wall time** (PanoramaStats) — pre-empting the survey's "pruned dims is a misleading proxy" criticism. We should report pair-FLOPs-avoided and wall time the same way.
+
+## 5. Free experimental infrastructure
+
+The bench suite includes **Deep 9.99M × 96D — literally our dataset** — plus ADSampling and PDX vendored as baselines and `hephaestus` for OOD query generation. So: an honest CPU baseline for our join (batched kNN-join over `IndexIVFFlatPanorama`), reusable competitor implementations, and an OOD generator for our distribution-robustness claim, all in one clone. The missing `range_search` means the "ANN-index ε-join baseline" still has to be approximated via kNN-join with oversized k — worth stating explicitly in the paper, since it shows even the best refinement infrastructure has no native join mode.
+
+## Net effect on our story
+
+Before reading the code, the positioning was "a known bound, re-evaluated in a regime the literature skipped." After: **the bound is now standard library infrastructure, shipped CPU-only and kNN-only; its own engineering history independently converged on our kernel design principles; and its one approximation knob provably degenerates in the join regime, with a closed-form headroom formula marking the boundary.** The gap we fill is sharper, the design principles have two-platform evidence, and the contrast is quantitative rather than rhetorical.
+
+#
+
+Net: **stronger — but it redistributes where the strength sits**, and it's worth being precise about the ledger, because one of our claimed contributions gets demoted in the process.
+
+## What it genuinely weakens
+
+The kernel-engineering findings can no longer be claimed as discoveries. Two-pass decoupling, branchless mask-based selection, compile-time shape dispatch, dense-vs-gather specialization — all four are in shipped Faiss code with their own in-tree ablation. If we'd written "we discover that decoupling arithmetic from emission is essential" and a reviewer knew `progressive_filter_batch_unoptimized` existed, that section dies in review. So contribution #3 from my earlier ledger — the systems/engineering findings — demotes from "novel" to "independently corroborated, transferred, and extended." Finding this now rather than in reviews converts a landmine into a citation, but let's not pretend the novelty survives.
+
+There's also the uncomfortable inference a cynical reviewer will draw: if two teams converge on the same design, the design space is narrow, and "obvious GPU port of Faiss engineering" writes itself as a rejection sentence.
+
+## Why it nonetheless strengthens the position
+
+**Convergence upgrades choices into principles.** Before, our kernel decisions were justified by our own ablations on one GPU — the weakest kind of systems evidence. Now the same three decisions have been reached independently, on a different substrate, by a team that also measured the fused-vs-decoupled gap and considered it important enough to keep the losing variant in-tree as an ablation. Independent replication across architectures is how you tell a design principle from a hardware artifact. We couldn't have manufactured that evidence ourselves at any cost.
+
+**And the convergence is only partial — the divergences are load-bearing, and we can explain them.** This is the part I'd actually build a section around:
+
+- **Cascade granularity.** Their filter is a per-candidate multi-level cascade — prune after every level, compact the active set, proceed. Ours is a single-cut tile filter, and *not* by taste: we measured that at join survivor rates, Pr[a warp contains a survivor] ≈ 1, so per-candidate early exit buys nothing under warp lockstep. The cascade doesn't disappear on GPU — it's forced up to tile granularity (the fused tile-BVH design). Same bound, same principle, different granularity, derivable from hardware execution models.
+- **Selection mechanism.** Their `keep_mask` + `_pext` compaction *preserves an active set for the next level*. Our `__ballot_sync` doesn't compact candidates at all — the warp *is* the output word, and the ballot assembles a terminal result directly. Convergent at the principle level (no per-element branches), structurally different at the mechanism level, and the difference traces to kNN-vs-join output semantics.
+- **State.** They carry (L+1) suffix norms per vector because the cascade needs a ladder; we showed a single ρ at one cut suffices at the join operating point. Their running k-th-distance threshold tightens serially per query; our static ε is what licenses tile/GEMM parallelism in the first place.
+
+"Which parts of projection-bound filtering are substrate-invariant, and which are forced by the hardware and query semantics" is a better paper section than either kernel description alone — and it's only writable because both implementations now exist.
+
+## What the subtraction clarifies
+
+Strip away everything the convergence touches, and look at what's left standing untouched: the output-format economics (bitmask's σ-independent floor, the list moving optimal k — kNN's heap has no analogue), the set-level negative result and ceiling law (kNN probes lists; it never enumerates partition *pairs*, so balls-vs-boxes doesn't arise in their world), the density-based calibration (join-specific because ground truth *is* the query output), the band-structured adaptive slabs, self-join dedup. Every survivor is join-shaped. The convergence acted as a filter on our contribution list, and what passed through is exactly the part no kNN system — however well-engineered — would ever encounter. That's a cleaner core than we had before, when the kernel findings were padding the ledger.
+
+**Plus two practical effects.** Meta upstreaming the bound certifies the bottleneck as real — nobody can call the problem exotic. And it sets a clock: the space is active, CPU `range_search` is a trivial gap for them to close, while the GPU join — with its output problem, partition-pair enumeration, and tile-granularity cascade — is the part with real engineering distance. That argues for writing this up sooner rather than deeper.
+
+One honest caveat on the "independence" claim: we can document from this session's history that our design was derived from measurements, not from their code — the ballot kernel came out of a bank-conflict diagnosis, the two-pass split from a measured 10 % regression. But priority belongs to whoever published, and they published. The correct posture in the paper is corroboration and transfer, never co-discovery — claim the delta, cite the rest.
