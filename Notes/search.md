@@ -511,3 +511,85 @@ Strip away everything the convergence touches, and look at what's left standing 
 **Plus two practical effects.** Meta upstreaming the bound certifies the bottleneck as real — nobody can call the problem exotic. And it sets a clock: the space is active, CPU `range_search` is a trivial gap for them to close, while the GPU join — with its output problem, partition-pair enumeration, and tile-granularity cascade — is the part with real engineering distance. That argues for writing this up sooner rather than deeper.
 
 One honest caveat on the "independence" claim: we can document from this session's history that our design was derived from measurements, not from their code — the ballot kernel came out of a bank-conflict diagnosis, the two-pass split from a measured 10 % regression. But priority belongs to whoever published, and they published. The correct posture in the paper is corroboration and transfer, never co-discovery — claim the delta, cite the rest.
+
+#
+
+Three things to build and explain. Let me start with the epilogue — and it turns out "shuffle-transpose" isn't needed.
+
+Recall 0.17 % — a real bug. The kernel takes one `code` pointer for both operands but indexes it with **slab-local** indices, so every block pair reads the same first `rn`/`mb` vectors. The standalone benchmark hid this because there `i0`/`j0` were already global. Fixing:
+
+Built, debugged, and validated end-to-end.
+
+## The epilogue — no transpose needed
+
+A shuffle-transpose is only required to emit **mask words**, where lane *l* must own column *l*. For a **compact survivor list**, each thread already knows the global coordinates of both its mma outputs (row = `groupID`, col = `2·tig + {0,1}`), so it appends directly: one `__any_sync` gate (false for almost every tile), a warp prefix scan over per-thread hit counts of 0–2, one `atomicAdd` per warp. The list format I adopted earlier for a different reason turns out to be what makes the BMMA layout a non-issue.
+
+## Validation — full Deep10M self-join
+
+| | filter | refine | **total** | recall |
+|---|---|---|---|---|
+| projection k=12 (exact) | 17.96 s | 0.88 s | **18.84 s** | 100 % |
+| corrected sym, BMMA | **13.53 s** | **0.28 s** | **13.81 s** | 99.97665 % |
+
+**13.81 s, not the 7.1 s I projected — I was off by 1.9×.** Third failed projection this session, same failure mode each time: extrapolating from a microbenchmark and ignoring what the surrounding pipeline does. The 3310 Gpairs/s came from a dense 131072² square; the real pipeline runs 112,300 slab-shaped work items across 1,313 block pairs, with smaller grids and per-batch syncs. Actual gain is **1.36×**, not 2.6×.
+
+Recall 99.977 % (75,666,884 of 75,684,554 — 17,670 pairs missed) matches the 99.983 % offline measurement closely.
+
+**One bug found in the process.** The first run returned 0.17 % recall: the kernel took a single `code` pointer for both operands but indexed it with *slab-local* indices, so every block pair compared the same first few thousand vectors. The standalone benchmark hid it because `i0`/`j0` were already global there. Fixed by passing `code + oa*4` and `code + ob*4` separately. Worth noting the filter's *survivor rate* looked entirely plausible (7.9e-5) while being complete nonsense — survivor rate is not a correctness check.
+
+## Does b1 deprecation kill this?
+
+**It kills this kernel, not the method.** Three separate things are worth distinguishing:
+
+**RaBitQ itself is unaffected.** It ships in Faiss, Elasticsearch, OpenSearch, Milvus, and its mainstream use is *asymmetric* — query in full precision, data quantized, distances via LUT or int8. It never needed b1 MMA. Multi-bit RaBitQ (b=4), which had the best selectivity in my sweep at 1.0–1.4× over true, doesn't touch b1 at all.
+
+**The fallback on post-Ada hardware is INT8 tensor cores, and it's decent.** Map sketch bits to ±1 int8; then `⟨s_x,s_y⟩ = B − 2·Hamming`, so `mma.m16n8k32.s32.s8.s8.s32` computes the same quantity. Cost is 8× the memory (128 bytes/vector vs 16) but INT8 tensor throughput is high — H100 is ~2000 TOPS dense. Sustaining our 3310 Gpairs/s needs 424 TOPS of int8, well inside that envelope, so the arithmetic should hold up; the 8× code traffic is the risk, and that's a measurement I haven't made.
+
+**Even with no tensor path at all, the filter is roughly break-even.** Scalar POPC ran at 1098 Gpairs/s vs projection k=12's 1267 — 1.15× slower on the filter, 3.8× fewer survivors on the refine. On Hopper without b1 or int8 tricks, the corrected filter is a wash, not a loss.
+
+So: not a no-go, but this specific 1.36× is a sm_75/80/89 artifact with no forward path. For a paper I'd report it as a hardware-capability observation, not a design to build on.
+
+---
+
+# Set-level pruning
+
+## What it is
+
+A join over M×N pairs costs O(MN·D). **Set-level pruning** partitions X into groups {A_i} and Y into {B_j}, then for each *group pair* computes a lower bound on `min{d(x,y) : x∈A_i, y∈B_j}`. If that bound exceeds ε, the entire group pair is discarded — |A|·|B| pairs eliminated by one test. This is the shared skeleton of IVF joins, R-tree joins, metric-tree joins, and DiskJoin's clustering.
+
+It requires a **set summary**: a small object describing a whole group, plus a bound derived from it. Two families dominate:
+
+- **Bounding ball** (centroid c, radius r): `min d ≥ ‖c_i−c_j‖ − r_i − r_j`, straight from the triangle inequality. Used by IVF, VP-trees, M-trees, GNAT.
+- **AABB** (per-axis intervals): `min d² ≥ Σ_d gap_d²`, with `gap_d = max(0, lo_{j,d}−hi_{i,d}, lo_{i,d}−hi_{j,d})`. Used by R-trees, k-d trees, grids.
+
+## Why balls fail — three compounding facts
+
+**(1) The radius is a maximum, and maxima saturate under concentration.** On Deep, mean pairwise distance is 1.359 with **std/mean = 0.086**. Measured: a k-means cluster of 9,765 points (0.098 % of n — exactly DiskJoin's recommendation) has radius **0.96, which is 71 % of the whole dataset's mean pairwise distance**. The reason is structural: for m points, the max distance from the centroid scales roughly as `μ + σ√(2 ln m)`. With σ/μ = 0.086 and m = 10⁴ that's 1.37μ — and the dependence on m is only logarithmic, so shrinking clusters barely shrinks radii.
+
+**(2) Centroid separation is capped.** Unit-norm data puts every point on the sphere, so centroids lie inside the unit ball and `‖c_i−c_j‖ ≤ 2`; measured max was 1.397. Meanwhile `r_i+r_j ≈ 1.92`.
+
+**(3) The arithmetic simply doesn't close.** Need `‖c_i−c_j‖ − r_i − r_j > √ε = 0.2095`. The best margin across 524k cluster pairs was **−0.282** — short by 0.49. Not marginal.
+
+**Why no granularity works.** Larger clusters: radii grow, centroids converge toward the global mean — both worse. Smaller: radii shrink only logarithmically while cluster-pair count grows quadratically. The governing ratio is `√ε / typical distance = 0.2095/1.359 = 0.154`; a ball prune needs cluster *diameters* small relative to ε, and under concentration a cluster's diameter tracks the dataset's typical distance until it holds almost no points.
+
+**Why dimension reduction doesn't help.** 96-d, 16-d and 8-d projected balls all gave 0.00 %. Projection preserves concentration — PCA keeps the variance, it doesn't spread it. And for sorted blocks a *second* failure appears: **anisotropy**. A PC1-sorted block is thin along PC1 and full-width along the other 95 axes; its ball radius is set by the widest direction, discarding the one narrow direction that carries all the information (measured radius 1.06 for a block whose PC1 extent is a few percent of the range).
+
+## Why AABB works
+
+**It's a sum over axes, not a max over them.** This is the whole thing. A ball compresses a set to one scalar that behaves like a max — and a max is destroyed by a single wide direction. A box keeps D independent intervals, and `Σ_d gap_d²` lets narrow axes contribute while wide axes contribute zero without cancelling anything.
+
+**It aligns with the partition.** If you split along axis d, blocks have small extent in d, so `gap_d` is large for separated blocks — and the box bound *sees* that. A ball cannot, structurally.
+
+**It composes exactly with the projection bound.** `Σ_d gap_d² ≤ ‖Px−Py‖² ≤ ‖x−y‖²`, both inequalities exact. Verified empirically, not just algebraically: 40 pruned block pairs brute-forced over 3.81e9 pairs in full 96-d, smallest d² found = **0.291 vs threshold 0.0439**.
+
+**The ceiling law.** As blocks shrink their extents vanish and the kept fraction converges to `Pr[‖P_nd x − P_nd y‖ ≤ √ε]`. Measured ceilings: nd=1 → 58.65 %, nd=2 → 80.55 %, nd=3 → 92.03 %, nd=4 → 96.62 %, nd=8 → 99.89 %. A 1-D sort saturates at a measured 58.80 % against the predicted 58.65 %. Each partitioned axis multiplies selectivity (a θ-ball's volume fraction shrinks like θ^nd); you can't use all 96 because L levels give only L/nd splits per axis and gaps need ~3 splits, so optimum nd ≈ L/3.
+
+## Does it work with both filters?
+
+**Projection bound — yes, natively and exactly.** The block prune is literally the set-level relaxation of the pair filter: both test `‖Px−Py‖²`. That's why the prune provably cannot remove a pair the filter would keep, confirmed by identical survivor counts (4,794,136,319) across four different partitions.
+
+**Corrected/RaBitQ filter — yes, but with a caveat and a bonus.**
+
+The caveat: **the prune must live in coordinate space, not sketch space.** The binary analogue of an AABB would be the bits on which a whole block agrees, giving `Hamming ≥ popc((val_A ⊕ val_B) & fixed_A & fixed_B)`. For a block of 131,072 sketches the probability that all members agree on any given bit is ~2⁻¹³¹⁰⁷¹ — no bits are unanimous, and the bound is vacuous. So a sketch-based filter must carry auxiliary PCA coordinates purely for partitioning: 3 floats for a kd-3 tree, 12 bytes on top of a 16-byte sketch. Cheap, but it means the "compact code" story isn't as clean as it looks.
+
+The bonus: because the prune and the filter test *different* quantities here, better partitioning removes block pairs in which the sketch filter would have produced false positives. Unlike the projection case — where survivors were invariant — a better partition should reduce **both** filter work and survivor count. I haven't measured that, and given this session's record on unmeasured projections, it should be treated as a prediction, not a result.
