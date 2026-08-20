@@ -309,3 +309,61 @@ That also repositions your PC1 sort — currently presented as "the thing that w
 **Projected impact, flagged as projected.** At 1024 blocks with kd-3, kept drops from 43.7 % to 22.1 %: about 2× less filter work, so ~18.8 s → ~10 s, taking end-to-end from 12.7× to roughly 24× over brute force. **I have not run this through the actual pipeline** — it's inferred from the kept fraction — and it's the obvious next experiment. Two things could eat it: re-partitioning requires a gather (one-time), and finer blocks multiply kernel launches (115k at 1024 blocks is fine at ~0.6 s; 8192 blocks would need 4.9M launches and would demand a persistent work-queue kernel before the 85 % prune rate is realisable).
 
 **Caveats for the write-up.** One dataset, one ε. The concentration ratio (std/mean = 0.086) and the PC spectrum drive every number here, so the claim to make is the *mechanism* plus the ceiling formula — both of which transfer — rather than the specific percentages.
+
+#
+
+## Where the algorithm stands
+
+A four-stage **exact** ε-join, every stage verified against ground truth:
+
+| stage | mechanism | measured |
+|---|---|---|
+| **Preprocess** | PCA on 200k sample → project to k dims, residual norms ρ = √(1−‖Px‖²), partition | 0.21 s |
+| **Block prune** | axis-aligned box in projected subspace: drop pair if Σ_d gap_d² > ε | 58.4 % (1-D) / **73.9 %** (kd-3, 512 blocks) |
+| **Pair filter** | ⟨x,y⟩ ≤ ⟨Px,Py⟩ + ρₓρ_y, register-resident ballot kernel, compact survivor list | **1800 Gpairs/s** at k=8; σ = 2.48e-4 at k=12 |
+| **Refine** | FP32 sum-of-squared-differences, warp-per-pair over the list | 0.70 s |
+
+**Deep10M self-join, ε=0.0439, RTX 4090:** brute force 238.6 s → 1-D prune only 106.4 s → dense-bitmask pipeline 34.4 s → **compact-list pipeline 17.8–18.8 s ≈ 13×**.
+
+**Correctness evidence** (this is the strongest part of the work): zero recall violations across the full 10M join, verified by walking the brute-force mask and recomputing exact distances; identical true-pair counts at k = 8, 12, 16, 24; identical true-pair *and survivor* counts across four partition configurations; box prune verified by brute-forcing 40 pruned block pairs (3.81e9 pairs, min d² = 0.291 vs threshold 0.0439).
+
+## Against the literature
+
+**The bound is not ours.** [Panorama](https://arxiv.org/html/2510.00566) has it in identical form — orthogonal transform plus Cauchy–Schwarz on the tail, which for unit vectors reduces exactly to ⟨x,y⟩ ≤ ⟨Px,Py⟩ + ρₓρ_y. [L2AP](http://davidanastasiu.net/pdf/papers/2014-AnastasiuK-ICDE-l2ap.pdf) has the coordinate-prefix case from 2014. ADSampling/DADE/DDC/PDX-BOND are all variants. Any write-up must treat this as related work, not contribution.
+
+**Where we differ from each line:**
+
+| line | their setting | ours |
+|---|---|---|
+| Panorama, DCO methods | kNN, CPU/SIMD, indexed (HNSW/IVF), probabilistic or relaxed | ε-join, GPU, no index, exact |
+| L2AP / APSS | sparse vectors, inverted index | dense embeddings, GEMM-shaped |
+| FAsTED / TED-Join | brute force, tensor cores, no pruning | pruning-first, CUDA cores |
+| Xie SIGMOD'25, Kim PVLDB, DiskJoin | **approximate** joins over ANN indices | exact, no recall loss |
+
+The [EDBT 2026 DCO survey](https://openproceedings.org/2026/conf/edbt/paper-270.pdf) is the sharpest foil. Its headline finding is that projection pruning *loses* to SIMD-ized HNSW on CPUs — "not fully amenable to SIMD parallelization," 6.8× more branch mispredictions for DDC_res. Our ballot epilogue makes the predicate branch-free (`__ballot_sync`), and the survey's own IVF results say the technique *does* pay "when DCOs become the bottleneck." An ε-join is that condition taken to its limit. That's the core regime argument.
+
+The three recent join papers are all approximate, which is both our differentiator and our venue problem.
+
+## Contributions, and what kind they are
+
+**1. The set-level negative result — and its constructive fix.** *(negative result + predictive law + fix; the strongest item)*
+Bounding balls prune **0.00 %** at every granularity and dimension tested, including k-means at DiskJoin's recommended 0.1 % cluster size. The mechanism is that a ball summarises a set by a maximum, which saturates at the dataset scale under concentration (cluster radius 0.96 vs mean pairwise distance 1.36). Boxes in the projected subspace prune 73.9 %. The predictive law — prune ceiling = 1 − Pr[‖P_nd x − P_nd y‖ ≤ √ε] — is confirmed by 1-D sorting saturating at 58.80 % against a predicted 58.65 %. I could not find this stated anywhere.
+
+**2. Regime re-evaluation.** *(benchmarking/measurement)* A known technique, dismissed on CPU-kNN grounds, evaluated where its objections don't apply.
+
+**3. GPU kernel findings.** *(systems/engineering)* A K=8 mainloop is epilogue-bound — tile/stage/block sweeps recover only 11 %, while a register-resident ballot kernel beats the CUTLASS pipelined GEMM by **1.49×**, with the crossover back to the GEMM at k≈20. And the sharper one: **output format dominates kernel design.** A dense bitmask imposes a σ-independent 15 s floor on refinement; a compact survivor list removes it, moves optimal k from 8 to 12, and takes 34.4 → 18.8 s.
+
+**4. Precision characterization for joins.** *(measurement)* A join's error tolerance is set by the **local density of pairs at the threshold** (4.81e9 per unit d² on Deep), which converts any format's error into a misclassification count. FP16 loses 24,227 true pairs (99.968 % recall — confirming FAsTED's own <0.06 % claim); TF32 is bit-identical to FP16 on unit-norm data; BF16 is disqualifying. Conclusion: FP16 is a sound *filter* with a 7.2e-4 guard band, an unsound final answer.
+
+**Nothing here is a new algorithm or a new bound.** This is an empirical systems paper. That's a legitimate category, but it must be framed that way from the first paragraph or reviewers will find the bound in Panorama and reject on novelty.
+
+## What I'd honestly flag as weak
+
+- **One dataset, one ε.** Every number depends on Deep's concentration ratio (std/mean = 0.086) and PCA spectrum. The mechanism and the ceiling law transfer; the percentages do not.
+- **All baselines are my own implementations.** The FAsTED comparison used my WMMA kernel, not their code; the 13× is against my own FP32 brute force. Neither is a defensible baseline for publication.
+- **The kd-3 end-to-end gain didn't materialize** — 1.39× at matched block size, but only ~1.06× overall, because smaller blocks cost 1.33× in kernel efficiency. Fixable with a work-queue kernel, not yet done.
+- **Two of my own reported numbers were later corrected** (the FP32-Gram "0.6 % disagreement" was a harness artifact; the ~2× kd projection failed). Everything not directly measured should be treated as provisional.
+
+**To make it publishable, in priority order:** run the authors' FAsTED/GDS-Join/TED-Join code as real baselines; add 3–4 datasets including a high-dimensional text-embedding set and a non-normalized one; sweep ε across selectivities; build the work-queue kernel; extend to bipartite joins. Venue: DaMoN / EDBT / ICPP, not SIGMOD — the exact-join framing has no constituency there.
+
+If I had to pick one title: *"Exact ε-joins on GPUs: bounding balls don't work, boxes do."* The negative result is the part that's genuinely new, and it's strong enough to carry the paper on its own.
