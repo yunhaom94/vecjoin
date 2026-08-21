@@ -36,3 +36,13 @@
 - [ ] Implement frontier/ready-queue batching with bounded device seed/frontier storage and local-entry fallback
 - [ ] Add sibling candidate-slab execution and adaptive dense vs indexed dispatch
 - [ ] Instrument fine-search work, HBM traffic, occupancy, state size, and recall separately from outer I/O
+
+
+## Experiment Plan
+Datasets
+- DEEP1B 96D FP32 image - 100M vs 900M
+- SIFT1B 128D UINT8 image - 100M vs 900M
+- LAION1B 768D FP16 - 100M vs 900M
+- Text2Image-100M 200D FP32 multmodal - 100M x 50M (text embedding)
+- https://huggingface.co/datasets/CohereLabs/wikipedia-2023-11-embed-multilingual-v3 200M 1024D FP32
+- https://huggingface.co/datasets/Snowflake/mteb-retrieval-snowflake-arctic-embed-m-v1.5 30M 768D FP32
