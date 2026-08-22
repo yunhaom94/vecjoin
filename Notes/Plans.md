@@ -39,10 +39,18 @@
 
 
 ## Experiment Plan
-Datasets
-- DEEP1B 96D FP32 image - 100M vs 900M
-- SIFT1B 128D UINT8 image - 100M vs 900M
-- LAION1B 768D FP16 - 100M vs 900M
-- Text2Image-100M 200D FP32 multmodal - 100M x 50M (text embedding)
-- https://huggingface.co/datasets/CohereLabs/wikipedia-2023-11-embed-multilingual-v3 200M 1024D FP32
-- https://huggingface.co/datasets/Snowflake/mteb-retrieval-snowflake-arctic-embed-m-v1.5 30M 768D FP32
+Datasets Q x D
+- DEEP1B  GoogLeNet 96D FP32 image - 100M x 900M
+- SIFT1B 128D UINT8 image - 100M x 900M
+- Text2Image-1B 200D FP32 multmodal CLIP - 50M (text) x 500M (image)
+- LAION2B-en 768D FP16 text2img CLIP - 100M (text) x 1B (image)
+- https://huggingface.co/datasets/CohereLabs/wikipedia-2023-11-embed-multilingual-v3  Cohere Embed V3 embedding model. 200M 1024D FP32 -  20M x 180M
+- https://huggingface.co/datasets/Snowflake/mteb-retrieval-snowflake-arctic-embed-m-v1.5 30M 768D FP32 3M x 27M
+
+
+For each dataset
+- Find threshold for 
+0.5 mean pairs per query (ppq)
+1 mean ppq
+1.5 mean ppq
+2 mean ppq
